@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>OLS</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0 }
+  body {
+    background: #111;
+    color: #eee;
+    font-family: Arial,Helvetica,sans-serif;
+    overflow: hidden;
+  }
+  #controls {
+    position: fixed;
+    top: 20px; left: 20px;
+    background: rgba(255,255,255,0.1);
+    backdrop-filter: blur(10px);
+    border-radius: 12px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    z-index: 10;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  }
+  #controls label {
+    font-size: 18px;
+  }
+  .ctrl-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .ctrl-buttons button {
+    width: 140px;
+    height: 48px;
+    font-size: 18px;
+    background: rgba(255,255,255,0.15);
+    border: 1px solid rgba(255,255,255,0.3);
+    border-radius: 6px;
+    color: #fff;
+    cursor: pointer;
+  }
+  .ctrl-buttons button:active {
+    background: rgba(255,255,255,0.25);
+  }
+  #errorDisplay {
+    font-size: 18px;
+    display: flex;
+    justify-content: space-between;
+    width: 100%;
+  }
+  canvas {
+    position: absolute;
+    top: 0; left: 0;
+    display: block;
+  }
+</style>
+</head>
+<body>
+  <div id="controls">
+    <label>Find the optimum</label>
+    <div class="ctrl-buttons">
+      <button id="resetBtn">Reset</button>
+      <button id="optimizeBtn" style="display: none;">Optimize (Hidden)</button>
+    </div>
+    <div id="errorDisplay">SSE: <span id="errorValue">0.0</span></div>
+  </div>
+  <canvas id="canvas"></canvas>
+  <script>
+  const canvas = document.getElementById('canvas');
+  const ctx    = canvas.getContext('2d');
+  let W, H;
+  let points = [];
+  let lineAngle = 0;
+  let trueOptimalLineAngle = 0;
+  let optimalLineFound = false;
+  let dataCenterX = 0;
+  let dataCenterY = 0;
+  const POINT_COUNT = 20;
+  const CLUSTER_STD = 40;
+  const DOT_RADIUS  = 4;
+  const resetBtn     = document.getElementById('resetBtn');
+  const errorValueEl = document.getElementById('errorValue');
+
+  function resize(){
+    W = canvas.width  = innerWidth;
+    H = canvas.height = innerHeight;
+    draw();
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  function randn_bm(){
+    let u=0,v=0;
+    while(u===0) u=Math.random();
+    while(v===0) v=Math.random();
+    return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v);
+  }
+
+  function normalizeAngleToPiRange(angle) {
+    let normalized = angle % (2 * Math.PI);
+    if (normalized > Math.PI) {
+      normalized -= 2 * Math.PI;
+    } else if (normalized <= -Math.PI) {
+      normalized += 2 * Math.PI;
+    }
+    return normalized;
+  }
+
+  function calculateOptimalAngle(dataPoints) {
+    const n = dataPoints.length;
+    let sumX = 0, sumY = 0;
+    for (const p of dataPoints) {
+      sumX += p.x;
+      sumY += p.y;
+    }
+    dataCenterX = sumX / n;
+    dataCenterY = sumY / n;
+    let centeredSumXY = 0, centeredSumXX = 0;
+    for (const p of dataPoints) {
+      const cx = p.x - dataCenterX;
+      const cy = p.y - dataCenterY;
+      centeredSumXY += cx * cy;
+      centeredSumXX += cx * cx;
+    }
+    let m;
+    if (centeredSumXX === 0) {
+      m = Infinity;
+    } else {
+      m = centeredSumXY / centeredSumXX;
+    }
+    let angleFromSlope = Math.atan(m);
+    if (m === Infinity) {
+      angleFromSlope = Math.PI / 2;
+    } else if (m === -Infinity) {
+      angleFromSlope = -Math.PI / 2;
+    }
+    return normalizeAngleToPiRange(angleFromSlope);
+  }
+
+  function generateData(){
+    points = [];
+    for(let i=0; i<POINT_COUNT; i++){
+      points.push({ x: randn_bm()*CLUSTER_STD,
+                    y: randn_bm()*CLUSTER_STD });
+    }
+    const φ = Math.random()*Math.PI;
+    const s = 2 + Math.random()*3;
+    const cφ = Math.cos(φ), sφ = Math.sin(φ);
+    const initialOffsetX = W/2;
+    const initialOffsetY = H/2;
+    let sumX = 0;
+    let sumY = 0;
+    for(let p of points){
+      const mx = p.x * s, my = p.y;
+      const nx = mx*cφ - my*sφ;
+      const ny = mx*sφ + my*cφ;
+      p.x = nx + initialOffsetX;
+      p.y = ny + initialOffsetY;
+      sumX += p.x;
+      sumY += p.y;
+    }
+    dataCenterX = sumX / POINT_COUNT;
+    dataCenterY = sumY / POINT_COUNT;
+    lineAngle = (Math.random()*180 - 90) * Math.PI/180;
+    trueOptimalLineAngle = calculateOptimalAngle(points);
+    optimalLineFound = false;
+  }
+
+  function draw(){
+    ctx.clearRect(0,0,W,H);
+    ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+    ctx.lineWidth = 1;
+    for(let x=0; x<=W; x+=50){
+      ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke();
+    }
+    for(let y=0; y<=H; y+=50){
+      ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke();
+    }
+    let m = Math.tan(lineAngle);
+    const SLOPE_THRESHOLD = 1e6;
+    if (Math.abs(m) > SLOPE_THRESHOLD) {
+      m = (m > 0) ? SLOPE_THRESHOLD : -SLOPE_THRESHOLD;
+    }
+    let sumSq = 0;
+    for(let p of points){
+      const predictedY = m * (p.x - dataCenterX) + dataCenterY;
+      const verticalError = p.y - predictedY;
+      sumSq += (verticalError/100) * (verticalError/100);
+      ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y);
+      ctx.lineTo(p.x, predictedY);
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(200,130,90,0.15)';
+      const squareSide = Math.abs(verticalError);
+      ctx.beginPath();
+      ctx.moveTo(p.x, predictedY);
+      ctx.lineTo(p.x + squareSide, predictedY);
+      ctx.lineTo(p.x + squareSide, p.y);
+      ctx.lineTo(p.x, p.y);
+      ctx.closePath();
+      ctx.fill();
+    }
+    if (optimalLineFound) {
+      ctx.strokeStyle = 'rgba(100, 120, 255, 0.2)';
+      ctx.lineWidth   = 2;
+      const dx_opt = Math.cos(trueOptimalLineAngle), dy_opt = Math.sin(trueOptimalLineAngle);
+      const T_opt = Math.max(W,H);
+      ctx.beginPath();
+      ctx.moveTo(dataCenterX - dx_opt * T_opt, dataCenterY - dy_opt * T_opt);
+      ctx.lineTo(dataCenterX + dx_opt * T_opt, dataCenterY + dy_opt * T_opt);
+      ctx.stroke();
+    }
+    ctx.strokeStyle = '#114488';
+    ctx.lineWidth   = 4;
+    const dx = Math.cos(lineAngle), dy = Math.sin(lineAngle);
+    const T = Math.max(W,H);
+    ctx.beginPath();
+    ctx.moveTo(dataCenterX - dx*T, dataCenterY - dy*T);
+    ctx.lineTo(dataCenterX + dx*T, dataCenterY + dy*T);
+    ctx.stroke();
+    ctx.fillStyle = '#FFFFFF';
+    ctx.beginPath();
+    ctx.arc(dataCenterX, dataCenterY, DOT_RADIUS * 1.5, 0, Math.PI * 2);
+    ctx.fill();
+    for(let p of points){
+      const grad = ctx.createRadialGradient(
+        p.x,p.y, DOT_RADIUS*0.2,
+        p.x,p.y, DOT_RADIUS
+      );
+      grad.addColorStop(0, 'rgba(255,255,255,0.6)');
+      grad.addColorStop(1, '#FFC75F');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(p.x,p.y, DOT_RADIUS, 0, Math.PI*2);
+      ctx.fill();
+    }
+    if (sumSq > 100000) {
+      errorValueEl.textContent = sumSq.toExponential(2);
+    } else {
+      errorValueEl.textContent = sumSq.toFixed(1);
+    }
+  }
+
+  let dragging = false;
+  let startMouseAngle = 0;
+  let startLineAngle  = 0;
+  let previousLineAngleNormalized = 0;
+
+  canvas.addEventListener('mousedown', e => {
+    dragging = true;
+    startMouseAngle = Math.atan2(e.clientY - dataCenterY, e.clientX - dataCenterX);
+    startLineAngle  = lineAngle;
+    previousLineAngleNormalized = normalizeAngleToPiRange(lineAngle);
+  });
+
+  window.addEventListener('mousemove', e => {
+    if(!dragging) return;
+    const curAng = Math.atan2(e.clientY - dataCenterY, e.clientX - dataCenterX);
+    lineAngle = startLineAngle + (curAng - startMouseAngle);
+    if (!optimalLineFound) {
+      const currentLineAngleNormalized = normalizeAngleToPiRange(lineAngle);
+      const optimalAngleNormalized = normalizeAngleToPiRange(trueOptimalLineAngle);
+      const optimalAngleNormalized_partner = normalizeAngleToPiRange(trueOptimalLineAngle + Math.PI);
+      const prevDiff1 = previousLineAngleNormalized - optimalAngleNormalized;
+      const currentDiff1 = currentLineAngleNormalized - optimalAngleNormalized;
+      let crossedPrimary = false;
+      if (Math.sign(prevDiff1) !== Math.sign(currentDiff1) && !((prevDiff1 === 0 || currentDiff1 === 0) && prevDiff1 === currentDiff1)) {
+        crossedPrimary = true;
+      }
+      const prevDiff2 = previousLineAngleNormalized - optimalAngleNormalized_partner;
+      const currentDiff2 = currentLineAngleNormalized - optimalAngleNormalized_partner;
+      let crossedPartner = false;
+      if (Math.sign(prevDiff2) !== Math.sign(currentDiff2) && !((prevDiff2 === 0 || currentDiff2 === 0) && prevDiff2 === currentDiff2)) {
+        crossedPartner = true;
+      }
+      if (crossedPrimary || crossedPartner) {
+        optimalLineFound = true;
+      }
+      const TWO_PI = 2 * Math.PI;
+      const NEAR_OPTIMAL_TOLERANCE = 0.005;
+      const angleDifference1 = Math.abs(currentLineAngleNormalized - optimalAngleNormalized);
+      const normalizedAngleDifference1 = Math.min(angleDifference1, TWO_PI - angleDifference1);
+      if (normalizedAngleDifference1 < NEAR_OPTIMAL_TOLERANCE) {
+        optimalLineFound = true;
+      }
+      const angleDifference2 = Math.abs(currentLineAngleNormalized - optimalAngleNormalized_partner);
+      const normalizedAngleDifference2 = Math.min(angleDifference2, TWO_PI - angleDifference2);
+      if (normalizedAngleDifference2 < NEAR_OPTIMAL_TOLERANCE) {
+        optimalLineFound = true;
+      }
+    }
+    previousLineAngleNormalized = normalizeAngleToPiRange(lineAngle);
+    draw();
+  });
+
+  window.addEventListener('mouseup', () => {
+    dragging = false;
+  });
+
+  resetBtn.addEventListener('click', () => {
+    generateData();
+    draw();
+  });
+
+  generateData();
+  draw();
+  </script>
+</body>
+</html>

@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>K‑Means</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0 }
+  body {
+    background: #111;
+    color: #eee;
+    font-family: Arial,Helvetica,sans-serif;
+    overflow: hidden;
+  }
+  #controls {
+    position: fixed;
+    font-size: 24px;
+    top: 20px;
+    left: 20px;
+    background: rgba(255,255,255,0.1);
+    backdrop-filter: blur(10px);
+    border-radius: 12px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    z-index: 10;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  }
+  .stepper-slider {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+    .ctrl-buttons {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .ctrl-buttons button {
+      width: 200px;
+      height: 36px;
+      font-size: 18px;
+      background: rgba(255,255,255,0.15);
+      border: 1px solid rgba(255,255,255,0.3);
+      border-radius: 6px;
+      color: #fff;
+      cursor: pointer;
+    }
+    .ctrl-buttons button:active {
+      background: rgba(255,255,255,0.25);
+    }
+  .stepper-slider button {
+    width: 36px;
+    height: 36px;
+    font-size: 24px;
+    background: rgba(255,255,255,0.15);
+    border: 1px solid rgba(255,255,255,0.3);
+    border-radius: 6px;
+    color: #fff;
+    cursor: pointer;
+  }
+  .stepper-slider button:active {
+    background: rgba(255,255,255,0.25);
+  }
+  .stepper-slider input[type="range"] {
+    width: 80px;
+    height: 6px;
+    background: rgba(255,255,255,0.2);
+    border-radius: 3px;
+    cursor: pointer;
+  }
+  .stepper-slider input[type="range"]::-webkit-slider-thumb {
+    width: 16px;
+    height: 16px;
+    background: #6BCB77;
+    border-radius: 50%;
+    border: none;
+  }
+  .stepper-slider input[type="range"]::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    background: #6BCB77;
+    border-radius: 50%;
+    border: none;
+  }
+  #kValueDisplay {
+    width: 24px;
+    text-align: center;
+    font-size: 24px;
+    color: #fff;
+  }
+  canvas {
+    display: block;
+    position: absolute;
+    top: 0; left: 0;
+  }
+  #flash {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background: #fff;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.4s ease;
+    z-index: 20;
+  }
+</style>
+</head>
+<body>
+  <div id="controls">
+    <div class="stepper-slider">
+      <button id="decreaseK">–</button>
+      <input type="range" id="kRange" min="2" max="10" value="3">
+      <button id="increaseK">+</button>
+      <span id="kValueDisplay">3</span>
+    </div>
+    <div class="ctrl-buttons">
+      <button id="regenBtn">New Data</button>
+      <button id="startBtn">Start</button>
+      <button id="stopBtn">Stop</button>
+    </div>    
+  </div>
+
+  <canvas id="canvas"></canvas>
+  <div id="flash"></div>
+
+  <script>
+  const canvas = document.getElementById('canvas');
+  const ctx    = canvas.getContext('2d');
+  let W, H;
+  function resize() {
+    W = canvas.width  = innerWidth;
+    H = canvas.height = innerHeight;
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  const POINT_COUNT = 600;
+  const CLUSTER_STD = 60;
+  const COLORS = [
+    '#FF6B6B','#6BCB77','#4D96FF',
+    '#FFC75F','#845EC2','#FF9671',
+    '#00C9A7','#D65DB1','#2C73D2','#008F7A'
+  ];
+  const DOT_RADIUS = 4;
+
+  let points      = [];
+  let centroids   = [];
+  let assignments = [];
+  let k = 3;
+  let running = false;
+  let animId;
+  const flashEl = document.getElementById('flash');
+
+  const decBtn        = document.getElementById('decreaseK');
+  const incBtn        = document.getElementById('increaseK');
+  const kRange        = document.getElementById('kRange');
+  const kValueDisplay = document.getElementById('kValueDisplay');
+  const regenBtn      = document.getElementById('regenBtn');
+  const startBtn      = document.getElementById('startBtn');
+  const stopBtn       = document.getElementById('stopBtn');
+
+  function updateK(val) {
+    k = Math.max(2, Math.min(10, val));
+    kRange.value            = k;
+    kValueDisplay.textContent = k;
+  }
+  decBtn.onclick      = () => updateK(k - 1);
+  incBtn.onclick      = () => updateK(k + 1);
+  kRange.oninput      = () => updateK(parseInt(kRange.value, 10));
+  updateK(3); 
+
+  function randn_bm(){
+    let u=0,v=0;
+    while(u===0) u=Math.random();
+    while(v===0) v=Math.random();
+    return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v);
+  }
+  function gaussianPoint(cx,cy,std){
+    return { x: cx + randn_bm()*std, y: cy + randn_bm()*std };
+  }
+
+  function generateData(){
+    points = [];
+    assignments = [];
+    centroids = [];
+
+    const clusters = Math.floor(Math.random()*6) + 3;
+    const centers = [];
+    const avoidW = 340, avoidH = 300;
+
+    for(let i=0;i<clusters;i++){
+      let x,y;
+      do {
+        x = Math.random()*W*0.8 + W*0.1;
+        y = Math.random()*H*0.8 + H*0.1;
+      } while(x<avoidW && y<avoidH);
+      centers.push({ x, y });
+    }
+
+    for(let i=0;i<POINT_COUNT;i++){
+      const c = centers[i % clusters];
+      points.push(gaussianPoint(c.x,c.y,CLUSTER_STD));
+    }
+    assignments = new Array(points.length);
+  }
+
+  function initCentroids(){
+    centroids = [];
+    assignments = new Array(points.length);
+    const avoidW = 340, avoidH = 300;
+    for(let i=0;i<k;i++){
+      let p;
+      do {
+        p = points[Math.floor(Math.random()*points.length)];
+      } while(p.x<avoidW && p.y<avoidH);
+      centroids.push({
+        x: p.x, y: p.y, dx:0, dy:0,
+        color: COLORS[i % COLORS.length]
+      });
+    }
+  }
+
+  function distance2(a,b){
+    const dx = a.x - b.x, dy = a.y - b.y;
+    return dx*dx + dy*dy;
+  }
+  function assignPoints(){
+    let changed = false;
+    for(let i=0;i<points.length;i++){
+      let best=0, min=Infinity;
+      for(let j=0;j<centroids.length;j++){
+        const d = distance2(points[i], centroids[j]);
+        if(d < min){ min = d; best = j; }
+      }
+      if(assignments[i] !== best){
+        assignments[i] = best;
+        changed = true;
+      }
+    }
+    return changed;
+  }
+
+  function moveCentroids(){
+    const sums = new Array(k).fill(0).map(()=>({x:0,y:0,c:0}));
+    for(let i=0;i<points.length;i++){
+      const a = assignments[i];
+      sums[a].x += points[i].x;
+      sums[a].y += points[i].y;
+      sums[a].c++;
+    }
+    let moved = false;
+    for(let j=0;j<k;j++){
+      if(sums[j].c===0) continue;
+      const nx = sums[j].x/sums[j].c;
+      const ny = sums[j].y/sums[j].c;
+      const c = centroids[j];
+      if(Math.hypot(c.x-nx, c.y-ny)>0.5){
+        c.dx = (nx-c.x)*0.08;
+        c.dy = (ny-c.y)*0.08;
+        moved = true;
+      } else {
+        c.x=nx; c.y=ny; c.dx=0; c.dy=0;
+      }
+    }
+    return moved;
+  }
+
+  function updateCentroids(){
+    let moving = false;
+    for(const c of centroids){
+      if(Math.abs(c.dx)>0.01||Math.abs(c.dy)>0.01){
+        c.x += c.dx; c.y += c.dy;
+        c.dx *= 0.99; c.dy *= 0.99;
+        moving = true;
+      }
+    }
+    return moving;
+  }
+
+  function draw(){
+    ctx.clearRect(0,0,W,H);
+
+    for(let i=0;i<points.length;i++){
+      const a = assignments[i], p = points[i];
+      const base = (a!=null && centroids[a]) ? centroids[a].color : '#888';
+      const grad = ctx.createRadialGradient(
+        p.x,p.y,DOT_RADIUS*0.2,
+        p.x,p.y,DOT_RADIUS
+      );
+      grad.addColorStop(0,'rgba(255,255,255,0.6)');
+      grad.addColorStop(1,base);
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(p.x,p.y,DOT_RADIUS,0,Math.PI*2);
+      ctx.fill();
+    }
+
+    for(const c of centroids){
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 3;
+      ctx.fillStyle = c.color;
+      ctx.beginPath();
+      ctx.arc(c.x,c.y,DOT_RADIUS*3,0,Math.PI*2);
+      ctx.fill(); ctx.stroke();
+    }
+  }
+
+  function loop(){
+    const movedPts   = assignPoints();
+    const accelMove  = moveCentroids();
+    const decelMove  = updateCentroids();
+    draw();
+    if(!(movedPts||accelMove||decelMove)){
+      running = false;
+      flashEl.style.opacity = .85;
+      setTimeout(()=>flashEl.style.opacity=0,90);
+      return;
+    }
+    animId = requestAnimationFrame(loop);
+  }
+
+  function start(){
+    if(!points.length) generateData();
+    initCentroids();
+    running = true;
+    cancelAnimationFrame(animId);
+    loop();
+  }
+  function stop(){
+    running = false;
+    cancelAnimationFrame(animId);
+  }
+
+  regenBtn.onclick = () => { if(running) stop(); generateData(); draw(); };
+  startBtn.onclick = () => { if(!running) start(); };
+  stopBtn.onclick  = () => { if(running)  stop(); };
+
+  generateData();
+  draw();
+  </script>
+</body>
+</html>
