@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Shortest Path</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0 }
+        body {
+            background: #111;
+            color: #eee;
+            font-family: Arial,Helvetica,sans-serif;
+            overflow: hidden;
+            display: flex;
+            width: 100vw;
+            height: 100vh;
+        }
+        #controls {
+            position: fixed;
+            font-size: 18px;
+            top: 20px;
+            left: 20px;
+            background: rgba(255,255,255,0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 12px;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            z-index: 10;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+            color: #eee;
+            width: 250px;
+        }
+        #controls h2 {
+            font-size: 24px;
+            font-weight: bold;
+            text-align: center;
+            margin-bottom: 8px;
+        }
+        .slider-group {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 4px;
+            margin-bottom: 8px;
+        }
+        .slider-group label {
+            white-space: nowrap;
+            margin-bottom: 4px;
+        }
+        .slider-group input[type="range"] {
+            flex-grow: 1;
+            width: 100%;
+            height: 6px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 3px;
+            cursor: pointer;
+            -webkit-appearance: none;
+            appearance: none;
+        }
+        .slider-group input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            background: #6BCB77;
+            border-radius: 50%;
+            border: none;
+            cursor: grab;
+        }
+        .slider-group input[type="range"]::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            background: #6BCB77;
+            border-radius: 50%;
+            border: none;
+            cursor: grab;
+        }
+        .slider-value-display {
+            width: 30px;
+            text-align: center;
+            font-size: 18px;
+            color: #fff;
+            margin-top: 4px;
+        }
+        .button-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-top: 12px;
+        }
+        button {
+            width: 100%;
+            height: 40px;
+            font-size: 18px;
+            background: rgba(255,255,255,0.15);
+            border: 1px solid rgba(255,255,255,0.3);
+            border-radius: 6px;
+            color: #fff;
+            cursor: pointer;
+            transition: background 0.2s ease, border-color 0.2s ease;
+        }
+        button:hover {
+            background: rgba(255,255,255,0.2);
+            border-color: rgba(255,255,255,0.4);
+        }
+        button:active {
+            background: rgba(255,255,255,0.25);
+            border-color: rgba(255,255,255,0.5);
+        }
+        .btn-primary {
+            background-color: #4D96FF;
+            border-color: #4D96FF;
+        }
+        .btn-primary:hover {
+            background-color: #6aabff;
+            border-color: #6aabff;
+        }
+        .btn-secondary {
+            background-color: rgba(255,255,255,0.15);
+        }
+        .btn-secondary:hover {
+            background: rgba(255,255,255,0.2);
+        }
+        .message-box {
+            background-color: rgba(0,0,0,0.3);
+            border: 1px solid rgba(255,255,255,0.2);
+            color: #fff;
+            padding: 0.8rem;
+            border-radius: 0.75rem;
+            text-align: center;
+            font-weight: 400;
+            min-height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            margin-top: 12px;
+        }
+        canvas {
+            display: block;
+            position: absolute;
+            background: #222;
+            z-index: 1;
+        }
+        @media (max-width: 768px) {
+            #controls {
+                position: relative;
+                top: auto;
+                left: auto;
+                width: auto;
+                margin: 20px;
+            }
+            body {
+                flex-direction: column;
+                align-items: center;
+                height: auto;
+                padding: 20px 0;
+            }
+            canvas {
+                position: relative;
+                margin: 20px;
+                height: 400px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="controls">
+        <h2>Dijkstra's<br>Shortest Path</h2>
+        <div class="slider-group">
+            <label for="numNodesSlider">Nodes:</label>
+            <input type="range" id="numNodesSlider" min="10" max="25" value="15"/>
+            <span id="numNodesValue" class="slider-value-display">15</span>
+        </div>
+        <div class="slider-group">
+            <label for="probEdgeSlider">Edge Probability:</label>
+            <input type="range" id="probEdgeSlider" min="0.1" max="0.5" step="0.05" value="0.3"/>
+            <span id="probEdgeValue" class="slider-value-display">0.3</span>
+        </div>
+        <div class="button-group">
+            <button id="generateGraphBtn" class="btn-primary">Generate Graph</button>
+            <button id="findPathBtn" class="btn-secondary">Find Shortest Path</button>
+        </div>
+        <div id="messageBox" class="message-box">
+            Adjust parameters and click "Generate Graph".
+        </div>
+    </div>
+    <canvas id="graphCanvas"></canvas>
+    <script>
+        const canvas = document.getElementById('graphCanvas');
+        const ctx = canvas.getContext('2d');
+        const numNodesSlider = document.getElementById('numNodesSlider');
+        const numNodesValueSpan = document.getElementById('numNodesValue');
+        const probEdgeSlider = document.getElementById('probEdgeSlider');
+        const probEdgeValueSpan = document.getElementById('probEdgeValue');
+        const generateGraphBtn = document.getElementById('generateGraphBtn');
+        const findPathBtn = document.getElementById('findPathBtn');
+        const messageBox = document.getElementById('messageBox');
+
+        let numNodes = parseInt(numNodesSlider.value);
+        let probEdge = parseFloat(probEdgeSlider.value);
+
+        let nodes = [];
+        let adjList = new Map();
+        let edges = [];
+        let startNode = null;
+        let endNode = null;
+        let selectedNodes = [];
+        let isSelectingNodes = false;
+        let bfsAnimationInterval = null;
+        const BFS_ANIMATION_SPEED_MS = 300;
+
+        let bfsQueue = [];
+        let bfsVisited = new Set();
+        let bfsParent = new Map();
+        let bfsPathFound = false;
+        let currentBFSNode = null;
+        let currentNeighborIndex = 0;
+        let currentNeighborsArray = [];
+
+        const NODE_COLOR = '#4D96FF';
+        const EDGE_COLOR = 'rgba(255,255,255,0.6)';
+        const EXPLORED_EDGE_COLOR = 'rgba(255,255,255,0.2)';
+        const HIGHLIGHT_COLOR = '#FF6B6B';
+        const CHECKING_COLOR = '#FFC75F';
+        const PATH_COLOR = '#6BCB77';
+
+        const NODE_RADIUS = 15;
+        const NODE_TEXT_COLOR = '#ffffff';
+
+        const K_CONSTANT = 1;
+        const REPULSION_STRENGTH = 2;
+        const ATTRACTION_STRENGTH = 2.5;
+        const DAMPING_FACTOR = 0.9;
+        const MAX_FORCE_MAGNITUDE = 10;
+        const SIMULATION_ITERATIONS = 100;
+        const BOUNDARY_REPULSION_MAGNITUDE = 1e+5;
+        const MIN_BOUNDARY_DIST = 1;
+        const BOUNDARY_PADDING = NODE_RADIUS * 2;
+
+        function setCanvasDimensions() {
+            const controlsEl = document.getElementById('controls');
+            const controlsWidth = controlsEl.offsetWidth;
+            const controlsLeft = controlsEl.offsetLeft;
+            const canvasLeftOffset = controlsLeft + controlsWidth + 20;
+            const canvasRightMargin = 20;
+            const canvasTopBottomMargin = 20;
+            canvas.width = window.innerWidth - canvasLeftOffset - canvasRightMargin;
+            canvas.height = window.innerHeight - (2 * canvasTopBottomMargin);
+            canvas.style.position = 'absolute';
+            canvas.style.top = canvasTopBottomMargin + 'px';
+            canvas.style.left = canvasLeftOffset + 'px';
+            if (nodes.length > 0) {
+                runForceDirectedLayout();
+                drawGraph();
+            }
+        }
+
+        function clearCanvas() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+
+        function drawNode(node, color = NODE_COLOR) {
+            ctx.beginPath();
+            ctx.arc(node.x, node.y, NODE_RADIUS, 0, Math.PI * 2);
+            ctx.fillStyle = color;
+            ctx.fill();
+            ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            ctx.fillStyle = NODE_TEXT_COLOR;
+            ctx.font = '12px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(node.id, node.x, node.y);
+        }
+
+        function drawEdge(u, v, color = EDGE_COLOR, lineWidth = 2) {
+            const nodeU = nodes.find(n => n.id === u);
+            const nodeV = nodes.find(n => n.id === v);
+            if (!nodeU || !nodeV) return;
+            ctx.beginPath();
+            ctx.moveTo(nodeU.x, nodeU.y);
+            ctx.lineTo(nodeV.x, nodeV.y);
+            ctx.strokeStyle = color;
+            ctx.lineWidth = lineWidth;
+            ctx.stroke();
+        }
+
+        function drawGraph() {
+            clearCanvas();
+            edges.forEach(edge => {
+                drawEdge(edge.u, edge.v, edge.color || EDGE_COLOR, edge.lineWidth || 2);
+            });
+            nodes.forEach(node => {
+                drawNode(node, node.color || NODE_COLOR);
+            });
+        }
+
+        function runForceDirectedLayout() {
+            const area = canvas.width * canvas.height;
+            const k = K_CONSTANT * Math.sqrt(area / numNodes);
+            nodes.forEach(node => {
+                if (node.vx === undefined) node.vx = 0;
+                if (node.vy === undefined) node.vy = 0;
+            });
+            for (let iter = 0; iter < SIMULATION_ITERATIONS; iter++) {
+                nodes.forEach(nodeA => {
+                    nodeA.fx = 0;
+                    nodeA.fy = 0;
+                    nodes.forEach(nodeB => {
+                        if (nodeA.id === nodeB.id) return;
+                        const dx = nodeA.x - nodeB.x;
+                        const dy = nodeA.y - nodeB.y;
+                        const dist = Math.sqrt(dx * dx + dy * dy);
+                        if (dist > 0) {
+                            const repulsion = REPULSION_STRENGTH * (k * k) / dist;
+                            nodeA.fx += (dx / dist) * repulsion;
+                            nodeA.fy += (dy / dist) * repulsion;
+                        }
+                    });
+                    adjList.get(nodeA.id).forEach(neighborId => {
+                        const nodeB = nodes.find(n => n.id === neighborId);
+                        if (!nodeB) return;
+                        const dx = nodeA.x - nodeB.x;
+                        const dy = nodeA.y - nodeB.y;
+                        const dist = Math.sqrt(dx * dx + dy * dy);
+                        if (dist > 0) {
+                            const attraction = ATTRACTION_STRENGTH * (dist * dist) / k;
+                            nodeA.fx -= (dx / dist) * attraction;
+                            nodeA.fy -= (dy / dist) * attraction;
+                        }
+                    });
+                    let distFromLeft = nodeA.x - NODE_RADIUS;
+                    if (distFromLeft < BOUNDARY_PADDING) {
+                        distFromLeft = Math.max(MIN_BOUNDARY_DIST, distFromLeft);
+                        nodeA.fx += BOUNDARY_REPULSION_MAGNITUDE / (distFromLeft * distFromLeft);
+                    }
+                    let distFromRight = (canvas.width - nodeA.x) - NODE_RADIUS;
+                    if (distFromRight < BOUNDARY_PADDING) {
+                        distFromRight = Math.max(MIN_BOUNDARY_DIST, distFromRight);
+                        nodeA.fx -= BOUNDARY_REPULSION_MAGNITUDE / (distFromRight * distFromRight);
+                    }
+                    let distFromTop = nodeA.y - NODE_RADIUS;
+                    if (distFromTop < BOUNDARY_PADDING) {
+                        distFromTop = Math.max(MIN_BOUNDARY_DIST, distFromTop);
+                        nodeA.fy += BOUNDARY_REPULSION_MAGNITUDE / (distFromTop * distFromTop);
+                    }
+                    let distFromBottom = (canvas.height - nodeA.y) - NODE_RADIUS;
+                    if (distFromBottom < BOUNDARY_PADDING) {
+                        distFromBottom = Math.max(MIN_BOUNDARY_DIST, distFromBottom);
+                        nodeA.fy -= BOUNDARY_REPULSION_MAGNITUDE / (distFromBottom * distFromBottom);
+                    }
+                });
+                nodes.forEach(node => {
+                    const forceMagnitude = Math.sqrt(node.fx * node.fx + node.fy * node.fy);
+                    if (forceMagnitude > MAX_FORCE_MAGNITUDE) {
+                        node.fx = (node.fx / forceMagnitude) * MAX_FORCE_MAGNITUDE;
+                        node.fy = (node.fy / forceMagnitude) * MAX_FORCE_MAGNITUDE;
+                    }
+                    node.vx = (node.vx + node.fx) * DAMPING_FACTOR;
+                    node.vy = (node.vy + node.fy) * DAMPING_FACTOR;
+                    node.x += node.vx;
+                    node.y += node.vy;
+                    node.x = Math.max(NODE_RADIUS, Math.min(canvas.width - NODE_RADIUS, node.x));
+                    node.y = Math.max(NODE_RADIUS, Math.min(canvas.height - NODE_RADIUS, node.y));
+                });
+            }
+        }
+
+        function generateErdosRenyiGraph() {
+            nodes = [];
+            adjList.clear();
+            edges = [];
+            startNode = null;
+            endNode = null;
+            selectedNodes = [];
+            isSelectingNodes = false;
+            clearInterval(bfsAnimationInterval);
+            messageBox.textContent = 'Graph generated. Click "Find Shortest Path" to begin.';
+            for (let i = 0; i < numNodes; i++) {
+                const x = Math.random() * (canvas.width - 2 * BOUNDARY_PADDING) + BOUNDARY_PADDING;
+                const y = Math.random() * (canvas.height - 2 * BOUNDARY_PADDING) + BOUNDARY_PADDING;
+                nodes.push({ id: i, x, y, vx: 0, vy: 0, fx: 0, fy: 0 });
+                adjList.set(i, new Set());
+            }
+            for (let i = 0; i < numNodes; i++) {
+                for (let j = i + 1; j < numNodes; j++) {
+                    if (Math.random() < probEdge) {
+                        adjList.get(i).add(j);
+                        adjList.get(j).add(i);
+                        edges.push({ u: i, v: j, color: EDGE_COLOR, lineWidth: 2, checked: false });
+                    }
+                }
+            }
+            runForceDirectedLayout();
+            drawGraph();
+        }
+
+        function startBFSVisualization() {
+            if (nodes.length === 0) {
+                messageBox.textContent = 'Please generate a graph first!';
+                return;
+            }
+            startNode = null;
+            endNode = null;
+            selectedNodes = [];
+            isSelectingNodes = true;
+            clearInterval(bfsAnimationInterval);
+            bfsQueue = [];
+            bfsVisited = new Set();
+            bfsParent = new Map();
+            bfsPathFound = false;
+            currentBFSNode = null;
+            currentNeighborIndex = 0;
+            currentNeighborsArray = [];
+            nodes.forEach(node => node.color = NODE_COLOR);
+            edges.forEach(edge => {
+                edge.color = EDGE_COLOR;
+                edge.lineWidth = 2;
+                edge.checked = false;
+            });
+            drawGraph();
+            messageBox.textContent = 'Click on the START node.';
+        }
+
+        function getPathFromParentMap(targetNodeId) {
+            let path = [];
+            let curr = targetNodeId;
+            while (curr !== null) {
+                path.unshift(curr);
+                curr = bfsParent.get(curr);
+            }
+            return path;
+        }
+
+        canvas.addEventListener('click', (event) => {
+            if (!isSelectingNodes) return;
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = event.clientX - rect.left;
+            const mouseY = event.clientY - rect.top;
+            const clickedNode = nodes.find(node => {
+                const dist = Math.sqrt((mouseX - node.x)**2 + (mouseY - node.y)**2);
+                return dist <= NODE_RADIUS;
+            });
+            if (clickedNode) {
+                if (selectedNodes.length === 0) {
+                    startNode = clickedNode.id;
+                    selectedNodes.push(startNode);
+                    nodes.find(n => n.id === startNode).color = HIGHLIGHT_COLOR;
+                    drawGraph();
+                    messageBox.textContent = `Start node selected: ${startNode}. Now click on the END node.`;
+                } else if (selectedNodes.length === 1 && clickedNode.id !== startNode) {
+                    endNode = clickedNode.id;
+                    selectedNodes.push(endNode);
+                    nodes.find(n => n.id === endNode).color = HIGHLIGHT_COLOR;
+                    drawGraph();
+                    messageBox.textContent = `End node selected: ${endNode}. Starting BFS...`;
+                    isSelectingNodes = false;
+                    runBFSAnimation();
+                } else {
+                    messageBox.textContent = 'Please choose a different end node.';
+                }
+            } else {
+                messageBox.textContent = 'No node clicked. Please click on a node.';
+            }
+        });
+
+        function runBFSAnimation() {
+            if (startNode === null || endNode === null) {
+                messageBox.textContent = 'Error: Start or end node not selected.';
+                return;
+            }
+            bfsQueue.push(startNode);
+            bfsVisited.add(startNode);
+            bfsParent.set(startNode, null);
+            bfsAnimationInterval = setInterval(bfsStep, BFS_ANIMATION_SPEED_MS);
+        }
+
+        function bfsStep() {
+            if (currentBFSNode === null || currentNeighborIndex >= currentNeighborsArray.length) {
+                if (bfsQueue.length === 0) {
+                    clearInterval(bfsAnimationInterval);
+                    if (!bfsPathFound) messageBox.textContent = `No path found from ${startNode} to ${endNode}.`;
+                    edges.forEach(edge => {
+                        edge.color = edge.checked ? EXPLORED_EDGE_COLOR : EDGE_COLOR;
+                        edge.lineWidth = 2;
+                    });
+                    drawGraph();
+                    return;
+                }
+                currentBFSNode = bfsQueue.shift();
+                currentNeighborsArray = Array.from(adjList.get(currentBFSNode));
+                currentNeighborIndex = 0;
+                if (currentBFSNode === endNode) {
+                    bfsPathFound = true;
+                    clearInterval(bfsAnimationInterval);
+                    highlightPath();
+                    messageBox.textContent = `Path found from ${startNode} to ${endNode}!`;
+                    return;
+                }
+            }
+            edges.forEach(edge => {
+                edge.color = edge.checked ? EXPLORED_EDGE_COLOR : EDGE_COLOR;
+                edge.lineWidth = 2;
+            });
+            const pathToCurrent = getPathFromParentMap(currentBFSNode);
+            for (let i = 0; i < pathToCurrent.length - 1; i++) {
+                const u = pathToCurrent[i], v = pathToCurrent[i+1];
+                const e = edges.find(e=> (e.u===u&&e.v===v)||(e.u===v&&e.v===u));
+                if (e) { e.color=CHECKING_COLOR; e.lineWidth=3; }
+            }
+            if (currentNeighborIndex < currentNeighborsArray.length) {
+                const u = currentBFSNode, v = currentNeighborsArray[currentNeighborIndex];
+                const e = edges.find(e=> (e.u===u&&e.v===v)||(e.u===v&&e.v===u));
+                if (e) { e.color=CHECKING_COLOR; e.lineWidth=3; e.checked=true; }
+                if (!bfsVisited.has(v)) {
+                    bfsVisited.add(v);
+                    bfsParent.set(v, u);
+                    bfsQueue.push(v);
+                    if (v===endNode) {
+                        bfsPathFound=true;
+                        clearInterval(bfsAnimationInterval);
+                        highlightPath();
+                        messageBox.textContent=`Path found from ${startNode} to ${endNode}!`;
+                        return;
+                    }
+                }
+                currentNeighborIndex++;
+            }
+            drawGraph();
+        }
+
+        function highlightPath() {
+            if (!bfsPathFound) return;
+            let path = [], curr = endNode;
+            while (curr !== null) {
+                path.unshift(curr);
+                curr = bfsParent.get(curr);
+            }
+            edges.forEach(edge => {
+                edge.color = edge.checked ? EXPLORED_EDGE_COLOR : EDGE_COLOR;
+                edge.lineWidth = 2;
+            });
+            nodes.forEach(node=>{
+                node.color = path.includes(node.id) ? PATH_COLOR : NODE_COLOR;
+            });
+            for (let i = 0; i < path.length - 1; i++) {
+                const u = path[i], v = path[i+1];
+                const e = edges.find(e=> (e.u===u&&e.v===v)||(e.u===v&&e.v===u));
+                if (e) { e.color=PATH_COLOR; e.lineWidth=4; }
+            }
+            drawGraph();
+        }
+
+        numNodesSlider.addEventListener('input', () => {
+            numNodes = parseInt(numNodesSlider.value);
+            numNodesValueSpan.textContent = numNodes;
+            clearInterval(bfsAnimationInterval);
+            messageBox.textContent = 'Adjusted parameters. Click "Generate Graph".';
+        });
+
+        probEdgeSlider.addEventListener('input', () => {
+            probEdge = parseFloat(probEdgeSlider.value);
+            probEdgeValueSpan.textContent = probEdge.toFixed(2);
+            clearInterval(bfsAnimationInterval);
+            messageBox.textContent = 'Adjusted parameters. Click "Generate Graph".';
+        });
+
+        generateGraphBtn.addEventListener('click', generateErdosRenyiGraph);
+        findPathBtn.addEventListener('click', startBFSVisualization);
+
+        window.addEventListener('load', () => {
+            setCanvasDimensions();
+            generateErdosRenyiGraph();
+        });
+        window.addEventListener('resize', setCanvasDimensions);
+    </script>
+</body>
+</html>
