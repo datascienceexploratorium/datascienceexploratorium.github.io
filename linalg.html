@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Linear Algebra Canvas</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    /* THREE‑COLUMN FLEX LAYOUT */
+    body {
+      display: flex;
+      height: 100vh;
+      overflow: hidden;
+      gap: 10px;
+      background: #111;
+      font-family: Arial, sans-serif;
+    }
+
+    /* CONTROLS PANEL */
+    #controls {
+      flex: 0 1 auto;
+      width: 280px;
+      max-height: 1080px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+      padding: 15px;
+      background: rgba(255,255,255,0.1);
+      backdrop-filter: blur(10px);
+      border-radius: 12px;
+      color: #eee;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    }
+
+    .matrix-input-group {
+      padding: 16px;
+      border: 1px solid rgba(255,255,255,0.3);
+      border-radius: 8px;
+      background: rgba(0,0,0,0.2);
+      text-align: center;
+    }
+    .matrix-input-grid {
+      display: grid;
+      grid-template-columns: repeat(2,1fr);
+      gap: 8px;
+      justify-items: center;
+    }
+    .matrix-input-grid input[type="number"] {
+      width: 60px;
+      padding: 6px 10px;
+      border-radius: 6px;
+      border: 1px solid rgba(255,255,255,0.3);
+      background: rgba(0,0,0,0.2);
+      color: #eee;
+      font-size: 15px;
+      text-align: center;
+      -moz-appearance: textfield;
+    }
+    .matrix-input-grid input::-webkit-outer-spin-button,
+    .matrix-input-grid input::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+    .matrix-label-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .matrix-bracket-left, .matrix-bracket-right {
+      font-size: 4.5rem;
+      font-weight: 200;
+      color: #ccc;
+      line-height: 1;
+    }
+
+    /* BUTTON GROUP */
+    .button-group-top {
+      display: flex;
+      gap: 10px;
+      margin-top: 10px;
+      margin-bottom: 10px;
+      align-items: stretch;
+    }
+    .button-group-left-half, .button-group-right-half {
+      flex: 1;
+      display: flex;
+    }
+    .button-group-right-half {
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    #apply-button { background: #1b4c31; box-shadow: none; transform: none; }
+    #apply-button:hover {height: 100%; background: #256c45; transform: translateY(-1px); }
+    #apply-button:active {height: 100%; background: #1f5e3b;  }
+
+    .button-group-top .action-button:not(#apply-button) {
+      height: 32px;
+    }
+    #controls .action-button {
+      padding: 6px 10px;
+      font-size: 14px;
+    }
+    .action-button {
+      flex: 1;
+      background: #284977;
+      border: none;
+      color: #fff;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+    }
+    .action-button:hover    { background: #306cbb; transform: translateY(-1px); }
+    .action-button:active   { background: #699bf0; transform: translateY(0); box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
+    .action-button:disabled { background: #699bf0; cursor: not-allowed; box-shadow: none; transform: none; }
+
+    /* SPECIFIC BUTTON COLORS */
+    #draw-mode-button       { background: #19417d; }
+    #draw-mode-button:hover { background: #065cc5; }
+    #draw-mode-button:active{ background: #3482f8; }
+    #erase-mode-button        { background: #78421b; }
+    #erase-mode-button:hover  { background: #cb6f2e; }
+    #erase-mode-button:active { background: #cb8c5e; }
+
+    /* fixed-height clear button */
+    #clear-button {
+      background: #582828;
+      margin-top: auto;
+      flex: 0 0 auto;
+      height: 32px;
+    }
+    #clear-button:hover  { background: #821010; }
+    #clear-button:active { background: #9e1010; }
+
+    /* EXAMPLE MATRICES */
+    .example-matrices-group {
+      padding: 15px;
+      border: 1px solid rgba(255,255,255,0.3);
+      border-radius: 8px;
+      background: rgba(0,0,0,0.2);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .example-matrices-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+      gap: 10px;
+    }
+    .example-matrices-grid .action-button {
+      padding: 6px 8px;
+      font-size: 0.75rem;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    }
+    .example-matrices-grid .action-button:hover  { background: #546E7A; }
+    .example-matrices-grid .action-button:active { background: #37474F; }
+
+    /* CANVAS WRAPPER */
+    #canvas-wrapper {
+      flex: 1 1 auto;
+      min-width: 0;
+      min-height: 300px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    #canvas-wrapper canvas {
+      width: 100%;
+      height: 100%;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-radius: 8px;
+      background: #222;
+      display: block;
+    }
+    #no-canvas-message {
+      position: absolute;
+      color: #7f0000;
+      font-size: 1.125rem;
+      font-weight: 600;
+      display: none;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+    }
+
+    /* COORDINATE PANEL */
+    #coordinate-output-panel {
+      flex: 0 0 auto;
+      width: 200px;
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+      padding: 15px;
+      background: rgba(255,255,255,0.1);
+      backdrop-filter: blur(10px);
+      border-radius: 12px;
+      color: #eee;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    }
+    #coordinate-output {
+      flex-grow: 1;
+      background: rgba(0,0,0,0.2);
+      padding: 10px;
+      border-radius: 6px;
+      border: 1px solid rgba(255,255,255,0.2);
+      overflow-y: auto;
+      font-size: 0.875rem;
+      color: #eee;
+    }
+    #coordinate-output > div {
+      padding: 4px 8px;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+    }
+    #coordinate-output > div:last-child {
+      border-bottom: none;
+    }
+    .panel-title {
+      font-size: 1.1rem;
+      font-weight: bold;
+      color: #eee;
+      margin-bottom: 12px;
+    }
+
+    /* MOBILE LAYOUT */
+    @media(max-width:768px){
+      body { flex-direction: column; }
+      #controls, #canvas-wrapper { width: auto; }
+      #canvas-wrapper {
+        height: 400px;
+        max-height: 50vh;
+      }
+      /* hide coordinates panel on mobile */
+      #coordinate-output-panel { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div id="controls">
+    <div class="matrix-input-group">
+      <h3 class="panel-title">Transformation Matrix</h3>
+      <div class="matrix-label-row">
+        <span class="matrix-bracket-left">[</span>
+        <div class="matrix-input-grid">
+          <input type="number" id="m00" value="0" step="0.1"/>
+          <input type="number" id="m01" value="1" step="0.1"/>
+          <input type="number" id="m10" value="-1" step="0.1"/>
+          <input type="number" id="m11" value="0" step="0.1"/>
+        </div>
+        <span class="matrix-bracket-right">]</span>
+      </div>
+    </div>
+
+    <div class="button-group-top">
+      <div class="button-group-left-half">
+        <button id="apply-button" class="action-button">Apply</button>
+      </div>
+      <div class="button-group-right-half">
+        <button id="draw-mode-button" class="action-button">Draw</button>
+        <button id="erase-mode-button" class="action-button">Erase</button>
+      </div>
+    </div>
+
+    <div class="example-matrices-group">
+      <h3 class="panel-title">Example Matrices</h3>
+      <div id="example-buttons-container" class="example-matrices-grid"></div>
+    </div>
+
+    <button id="clear-button" class="action-button">Clear Points</button>
+  </div>
+
+  <div id="canvas-wrapper">
+    <canvas id="linearAlgebraCanvas"></canvas>
+    <div id="no-canvas-message">Canvas not supported by your browser.</div>
+  </div>
+
+  <div id="coordinate-output-panel">
+    <h3 class="panel-title">Coordinates</h3>
+    <div id="coordinate-output">No points added yet.</div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('linearAlgebraCanvas'),
+          ctx    = canvas.getContext('2d'),
+          coordOut = document.getElementById('coordinate-output');
+    let points = [], animationFrameId = null, currentMode = 'draw',
+        eraseCirclePos = null, isMouseDown = false, lastDrawPoint = null;
+    const SCALE = 20, ERASE_PIXEL_RADIUS = 25, DRAG_DRAW_DISTANCE = 20;
+    const [m00,m01,m10,m11] = ['m00','m01','m10','m11'].map(id=>document.getElementById(id));
+    const applyBtn = document.getElementById('apply-button'),
+          clearBtn = document.getElementById('clear-button'),
+          drawModeBtn = document.getElementById('draw-mode-button'),
+          eraseModeBtn = document.getElementById('erase-mode-button'),
+          exampleButtonsContainer = document.getElementById('example-buttons-container'),
+          noMsg = document.getElementById('no-canvas-message');
+
+    if (!ctx) {
+      canvas.style.display = 'none';
+      noMsg.style.display = 'block';
+    }
+
+    function toCart(x,y) {
+      const cx = canvas.width/2, cy = canvas.height/2;
+      return { x:(x-cx)/SCALE, y:(cy-y)/SCALE };
+    }
+    function toPix(x,y) {
+      const cx = canvas.width/2, cy = canvas.height/2;
+      return { x:cx+x*SCALE, y:cy-y*SCALE };
+    }
+    function getCanvasCoords(x,y) {
+      const r = canvas.getBoundingClientRect();
+      return { x:(x-r.left)*(canvas.width/r.width), y:(y-r.top)*(canvas.height/r.height) };
+    }
+
+    function drawGridOnly() {
+      const step = SCALE, cx = canvas.width/2, cy = canvas.height/2;
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      ctx.strokeStyle = 'rgba(255,255,255,0.1)'; ctx.lineWidth=0.8;
+      for(let x0=cx%step; x0<=canvas.width; x0+=step) { ctx.beginPath(); ctx.moveTo(x0,0); ctx.lineTo(x0,canvas.height); ctx.stroke(); }
+      for(let y0=cy%step; y0<=canvas.height; y0+=step) { ctx.beginPath(); ctx.moveTo(0,y0); ctx.lineTo(canvas.width,y0); ctx.stroke(); }
+      ctx.strokeStyle='rgba(255,255,255,0.4)'; ctx.lineWidth=2;
+      ctx.beginPath(); ctx.moveTo(0,cy); ctx.lineTo(canvas.width,cy); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(cx,0); ctx.lineTo(cx,canvas.height); ctx.stroke();
+    }
+    function drawDot(x,y) {
+      const p = toPix(x,y);
+      ctx.beginPath(); ctx.arc(p.x,p.y,4,0,2*Math.PI);
+      ctx.fillStyle='#96bfb7'; ctx.fill();
+      ctx.strokeStyle='#366d60'; ctx.lineWidth=1; ctx.stroke();
+    }
+    function drawEraseCircle(x,y) {
+      const p = toPix(x,y);
+      ctx.beginPath(); ctx.arc(p.x,p.y,ERASE_PIXEL_RADIUS,0,2*Math.PI);
+      ctx.strokeStyle='#bbbbbb'; ctx.lineWidth=2; ctx.stroke();
+    }
+    function drawStaticScene() {
+      drawGridOnly();
+      points.forEach(p=>drawDot(p.x,p.y));
+      if(currentMode==='erase' && eraseCirclePos) drawEraseCircle(eraseCirclePos.x,eraseCirclePos.y);
+    }
+    function updateDisplay() {
+      coordOut.innerHTML = '';
+      if(points.length===0) {
+        coordOut.textContent='No points added yet.';
+        return;
+      }
+      points.forEach(p=>{
+        const d=document.createElement('div');
+        d.textContent=`(${p.x.toFixed(2)}, ${p.y.toFixed(2)})`;
+        coordOut.appendChild(d);
+      });
+      coordOut.scrollTop = coordOut.scrollHeight;
+    }
+    function mulMV(m,[x,y]) {
+      return { x:m[0]*x + m[1]*y, y:m[2]*x + m[3]*y };
+    }
+
+    function handleEraseMouseMove(e) {
+      const c = getCanvasCoords(e.clientX,e.clientY);
+      eraseCirclePos = toCart(c.x,c.y);
+      if(isMouseDown) performErase(eraseCirclePos);
+      drawStaticScene();
+    }
+    function handleEraseMouseOut() {
+      eraseCirclePos = null;
+      drawStaticScene();
+    }
+    function handleDrawMouseMove(e) {
+      if(!isMouseDown) return;
+      const c = getCanvasCoords(e.clientX,e.clientY), cart = toCart(c.x,c.y);
+      if(lastDrawPoint) {
+        const dx=c.x-lastDrawPoint.x, dy=c.y-lastDrawPoint.y;
+        if(dx*dx+dy*dy >= DRAG_DRAW_DISTANCE*DRAG_DRAW_DISTANCE) {
+          points.push(cart);
+          lastDrawPoint = c;
+          drawStaticScene(); updateDisplay();
+        }
+      } else {
+        points.push(cart);
+        lastDrawPoint = c;
+        drawStaticScene(); updateDisplay();
+      }
+    }
+    function performErase(centerCart) {
+      const r2 = (ERASE_PIXEL_RADIUS/SCALE)**2, n0=points.length;
+      points = points.filter(p=>
+        (p.x-centerCart.x)**2 + (p.y-centerCart.y)**2 > r2
+      );
+      if(points.length!==n0) updateDisplay();
+    }
+    function handleCanvasMouseDown(e) {
+      if(animationFrameId) return;
+      isMouseDown = true;
+      lastDrawPoint = null;
+      const c = getCanvasCoords(e.clientX,e.clientY), cart = toCart(c.x,c.y);
+      if(currentMode==='draw') {
+        points.push(cart); lastDrawPoint = c;
+        drawStaticScene(); updateDisplay();
+      } else {
+        performErase(cart);
+        drawStaticScene(); updateDisplay();
+      }
+    }
+    function handleCanvasMouseUp() {
+      isMouseDown = false;
+      lastDrawPoint = null;
+    }
+    function updateCanvasCursorAndListeners() {
+      canvas.onmousemove = null; canvas.onmouseout = null;
+      canvas.onmousedown = null; canvas.onmouseup = null;
+      canvas.classList.remove('erase-mode-cursor');
+      eraseCirclePos = null;
+      if(currentMode==='erase') {
+        canvas.classList.add('erase-mode-cursor');
+        canvas.onmousemove = handleEraseMouseMove;
+        canvas.onmouseout = handleEraseMouseOut;
+        canvas.onmousedown = handleCanvasMouseDown;
+        canvas.onmouseup = handleCanvasMouseUp;
+      } else {
+        canvas.onmousedown = handleCanvasMouseDown;
+        canvas.onmouseup = handleCanvasMouseUp;
+        canvas.onmousemove = handleDrawMouseMove;
+      }
+      drawStaticScene();
+    }
+
+    function resizeCanvas() {
+      canvas.width  = canvas.clientWidth;
+      canvas.height = canvas.clientHeight;
+      drawStaticScene();
+    }
+
+    applyBtn.addEventListener('click', ()=>{
+      const mat = [
+        parseFloat(m00.value), parseFloat(m01.value),
+        parseFloat(m10.value), parseFloat(m11.value)
+      ];
+      if(mat.some(isNaN)) return alert('Enter valid numbers.');
+      if(points.length===0) return;
+      const orig = JSON.parse(JSON.stringify(points)),
+            targ = points.map(v=>mulMV(mat,[v.x,v.y]));
+      if(animationFrameId) cancelAnimationFrame(animationFrameId);
+      let start = null;
+      function animate(ts) {
+        if(!start) start=ts;
+        const prog = Math.min((ts-start)/500,1);
+        drawGridOnly();
+        orig.forEach((o,i)=>{
+          const fx = o.x + (targ[i].x-o.x)*prog,
+                fy = o.y + (targ[i].y-o.y)*prog;
+          drawDot(fx,fy);
+        });
+        if(prog<1) animationFrameId = requestAnimationFrame(animate);
+        else { points = targ; drawStaticScene(); updateDisplay(); animationFrameId=null; }
+      }
+      animationFrameId = requestAnimationFrame(animate);
+    });
+
+    clearBtn.addEventListener('click', ()=>{
+      points=[]; if(animationFrameId) cancelAnimationFrame(animationFrameId);
+      drawStaticScene(); updateDisplay();
+      m00.value=0; m01.value=1; m10.value=-1; m11.value=0;
+    });
+    drawModeBtn.addEventListener('click', ()=>{
+      currentMode='draw'; updateCanvasCursorAndListeners();
+    });
+    eraseModeBtn.addEventListener('click', ()=>{
+      currentMode='erase'; updateCanvasCursorAndListeners();
+    });
+
+    const exampleMatrices = [
+      { name:'Rotate 45°', values:[Math.cos(Math.PI/4), Math.sin(Math.PI/4), -Math.sin(Math.PI/4), Math.cos(Math.PI/4)] },
+      { name:'Rotate 90°',  values:[0,1,-1,0] },
+      { name:'Rotate 180°', values:[-1,0,0,-1] },
+      { name:'Rotate 270°', values:[0,-1,1,0] },
+      { name:'Stretch X',   values:[2,0,0,1] },
+      { name:'Compress Y',  values:[1,0,0,0.5] },
+      { name:'Shear X',     values:[1,1,0,1] },
+      { name:'Shear Y',     values:[1,0,1,1] },
+      { name:'Reflect Y',   values:[1,0,0,-1] },
+      { name:'Reflect X',   values:[-1,0,0,1] },
+      { name:'Flatten Y',   values:[1,0,0,0] },
+      { name:'Flatten X',   values:[0,0,0,1] }
+    ];
+    function createExampleMatrixButtons() {
+      exampleMatrices.forEach(mat=>{
+        const btn = document.createElement('button');
+        btn.textContent = mat.name;
+        btn.className = 'action-button';
+        btn.onclick = ()=>{
+          [m00.value,m01.value,m10.value,m11.value] =
+            mat.values.map(v=>v.toFixed(2));
+          applyBtn.click();
+        };
+        exampleButtonsContainer.appendChild(btn);
+      });
+    }
+
+    window.addEventListener('load', ()=>{
+      resizeCanvas();
+      updateCanvasCursorAndListeners();
+      createExampleMatrixButtons();
+      window.dispatchEvent(new Event('resize'));
+      updateDisplay();
+    });
+    window.addEventListener('resize', resizeCanvas);
+
+  </script>
+</body>
+</html>
