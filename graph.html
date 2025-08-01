@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>3D Force-Directed Graph</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+    background: #111;
+    color: #eee;
+    font-family: Arial,Helvetica,sans-serif;
+    overflow: hidden;
+    }
+
+    p {
+    font-family: Arial,Helvetica,sans-serif;
+    font-size: 14px;
+    color: #eee;
+    text-align: justify;
+    }
+
+    #controls {
+    position: fixed;
+    width: 240px;
+    top: 20px;
+    left: 20px;
+    font-size: 20px;
+    background: rgba(255,255,255,0.1);
+    backdrop-filter: blur(10px);
+    border-radius: 12px;
+    padding: 16px;
+    display: inline-flex;
+    flex-direction: column;
+    gap: 12px;
+    z-index: 10;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    }
+
+    /* file input: hide built-in filename, style only the button */
+    .file-input-container {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    }
+    .file-input-container input[type="file"] {
+    color: transparent;
+    }
+    .file-input-container input[type="file"]::-webkit-file-upload-button,
+    .file-input-container input[type="file"]::file-selector-button {
+    width: 100%;
+    height: 36px;
+    font-size: 18px;
+    background: rgba(255,255,255,0.15);
+    border: 1px solid rgba(255,255,255,0.3);
+    border-radius: 6px;
+    color: #fff;
+    cursor: pointer;
+    }
+    .file-input-container input[type="file"]::-webkit-file-upload-button:active,
+    .file-input-container input[type="file"]::file-selector-button:active {
+    background: rgba(255,255,255,0.25);
+    }
+
+    /* buttons */
+    .ctrl-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    }
+    .ctrl-buttons button {
+    width: 100%;
+    height: 36px;
+    font-size: 18px;
+    background: rgba(255,255,255,0.15);
+    border: 1px solid rgba(255,255,255,0.3);
+    border-radius: 6px;
+    color: #fff;
+    cursor: pointer;
+    }
+    .ctrl-buttons button:active {
+    background: rgba(255,255,255,0.25);
+    }
+
+    /* slider full‐width and green accent */
+    .stepper-slider {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    }
+    .stepper-slider input[type="range"] {
+    width: 100%;
+    height: 6px;
+    background: rgba(255,255,255,0.2);
+    border-radius: 3px;
+    cursor: pointer;
+    accent-color: #6BCB77;
+    }
+
+    /* green checkbox */
+    #toggleLabels {
+    accent-color: #6BCB77;
+    }
+
+    /* canvas styling unchanged */
+    canvas {
+    display: block;
+    position: absolute;
+    top: 0; left: 0;
+    }
+    .label {
+    position: absolute;
+    pointer-events: none;
+    background: rgba(0,0,0,0.5);
+    color: #fff;
+    padding: 2px 4px;
+    border-radius: 3px;
+    font-size: 12px;
+    white-space: nowrap;
+    transform: translate(-50%, -120%);
+    left: 0;
+    top: 0;
+    }
+  </style>
+</head>
+<body>
+<div id="controls">
+    <h2>Graph Viewer</h2>
+  <div class="file-input-container">
+    <input type="file" id="fileInput" accept=".csv">
+    <div id="fileNameDisplay"></div>
+  </div>
+  <p>
+    Accepts 2-column link lists with headers for rendering. 
+  </p>
+  <div class="ctrl-buttons">
+    <button id="displayBtn">Display</button>
+    <button id="demoBtn">Show Demo</button>
+  </div>
+
+  <div class="stepper-slider">
+    <label for="forceRatio">Force Ratio:</label>
+    <input type="range" id="forceRatio" min="1" max="10" step="0.1" value="3">
+  </div>
+
+  <label>
+    <input type="checkbox" id="toggleLabels">
+    Show Labels
+  </label>
+
+</div>
+
+  <div id="container"></div>
+
+  <script src="https://unpkg.com/three@0.140.0/build/three.min.js"></script>
+  <script src="https://unpkg.com/d3-octree@1"></script> 
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <script src="https://unpkg.com/d3-force-3d@3.0.6/dist/d3-force-3d.min.js"></script>
+  <script>
+    // Spherical navigation
+    let radius, theta, phi;
+    const INITIAL_RADIUS = 1500, INITIAL_THETA = 0, INITIAL_PHI = Math.PI/2;
+    let isDraggingView = false, lastMouse = { x:0, y:0 };
+    let showLabels = false;
+
+    // THREE.js
+    const container = document.getElementById('container');
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.FogExp2(0x000000, 0.00005);
+    const camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 1, 10000);
+    const renderer = new THREE.WebGLRenderer({ antialias:true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    container.appendChild(renderer.domElement);
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth/window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    // Data
+    let simulation, nodes = [], links = [];
+    let nodeMeshes = [], linkMesh, nodeLabels = [];
+    const raycaster = new THREE.Raycaster(), pointer = new THREE.Vector2();
+    let draggingNode = null;
+
+    // Sample data
+    const sampleData = `node_i,node_j
+0, 1
+0, 2
+0, 4
+0, 5
+0, 7
+0, 17
+1, 5
+1, 7
+1, 10
+1, 14
+2, 3
+2, 8
+3, 5
+3, 17
+4, 5
+4, 12
+4, 18
+5, 14
+5, 19
+6, 8
+6, 19
+7, 9
+7, 11
+8, 11
+8, 19
+9, 14
+9, 17
+10, 19
+11, 15
+12, 13
+12, 14
+12, 16
+15, 17
+16, 1`;
+
+    // Parse
+    function parseCSV(data) {
+      const rows = d3.csvParseRows(data);
+      return rows.slice(1).map(r => ({ source: r[0].trim(), target: r[1].trim() }));
+    }
+    function loadGraph(data) {
+      simulation && simulation.stop();
+      const parsed = parseCSV(data);
+      const ids = new Set(parsed.flatMap(d => [d.source, d.target]));
+      nodes = Array.from(ids).map(id => ({ id }));
+      links = parsed.map(d => ({ source: d.source, target: d.target }));
+      initSimulation();
+    }
+
+    function initSimulation() {
+      // clear
+      nodeMeshes.forEach(m => scene.remove(m));
+      linkMesh && scene.remove(linkMesh);
+      nodeLabels.forEach(l => l.remove());
+      nodeMeshes = []; nodeLabels = [];
+
+      // random 3D initial positions
+      nodes.forEach(n => {
+        n.x = (Math.random()*2 - 1)*100;
+        n.y = (Math.random()*2 - 1)*100;
+        n.z = (Math.random()*2 - 1)*100;
+      });
+
+      // create nodes
+      const geom = new THREE.SphereGeometry(10,16,16);
+      const mat = new THREE.MeshBasicMaterial({ color:0x00ff00, fog:true });
+      nodes.forEach(n => {
+        const m = new THREE.Mesh(geom, mat);
+        m.frustumCulled = false; scene.add(m);
+        nodeMeshes.push(m);
+        const lbl = document.createElement('div');
+        lbl.className = 'label'; lbl.textContent = n.id;
+        document.body.appendChild(lbl); nodeLabels.push(lbl);
+      });
+
+      // create links
+      const positions = new Float32Array(links.length * 6);
+      const geomLinks = new THREE.BufferGeometry();
+      geomLinks.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      geomLinks.setDrawRange(0, links.length * 2);
+      linkMesh = new THREE.LineSegments(
+        geomLinks,
+        new THREE.LineBasicMaterial({ color:0x008800, fog:true, visible:true })
+      );
+      linkMesh.frustumCulled = false; scene.add(linkMesh);
+      linkMesh.geometry.computeBoundingSphere();
+
+      // force simulation
+      const ratio = +forceRatio.value;
+      simulation = d3.forceSimulation(nodes, 3)
+        .force('link', d3.forceLink(links).id(d=>d.id)
+          .distance(Math.max(50,200/ratio)).strength(1/ratio))
+        .force('charge', d3.forceManyBody().strength(-ratio*200))
+        .force('center', d3.forceCenter(0,0,0))
+        .on('tick', updatePositions);
+
+      for(let i=0;i<150;i++) simulation.tick();
+      updatePositions(); simulation.alpha(1).restart();
+
+      forceRatio.oninput = e => {
+        const v = +e.target.value;
+        simulation.force('link').strength(1/v).distance(Math.max(50,200/v));
+        simulation.force('charge').strength(-v*200);
+        simulation.alpha(1).restart();
+      };
+    }
+
+    function updatePositions() {
+      // nodes
+      nodes.forEach((d,i) => {
+        const m = nodeMeshes[i];
+        if(m) m.position.set(d.x, d.y, d.z);
+      });
+      // links
+      if (linkMesh && linkMesh.geometry && linkMesh.geometry.attributes.position) {
+        const arr = linkMesh.geometry.attributes.position.array;
+        links.forEach((l,i) => {
+            const s = (l.source && l.source.x !== undefined) ? l.source : nodes.find(n=>n.id===l.source);
+            const t = (l.target && l.target.x !== undefined) ? l.target : nodes.find(n=>n.id===l.target);
+            if(s && t) {
+            arr[6*i]   = s.x;
+            arr[6*i+1] = s.y;
+            arr[6*i+2] = s.z;
+            arr[6*i+3] = t.x;
+            arr[6*i+4] = t.y;
+            arr[6*i+5] = t.z;
+            }
+        });
+        linkMesh.geometry.attributes.position.needsUpdate = true;
+        linkMesh.geometry.computeBoundingSphere();
+    }
+
+      // labels
+      nodeLabels.forEach((lbl,i) => {
+        lbl.style.display = showLabels ? 'block' : 'none';
+        if(showLabels) {
+          const d = nodes[i];
+          const v = new THREE.Vector3(d.x,d.y,d.z).project(camera);
+          if (v.z < -1 || v.z > 1) {
+            lbl.style.display = 'none';
+          } else {
+            const x = (v.x*0.5+0.5)*window.innerWidth;
+            const y = (-v.y*0.5+0.5)*window.innerHeight;
+            lbl.style.left = `${x}px`;
+            lbl.style.top = `${y}px`;
+          }
+        } else {
+            lbl.style.display = 'none';
+        }
+      });
+    }
+
+    function updateCamera(){
+      const x=radius*Math.sin(phi)*Math.sin(theta);
+      const y=radius*Math.cos(phi);
+      const z=radius*Math.sin(phi)*Math.cos(theta);
+      camera.position.set(x,y,z); camera.lookAt(0,0,0);
+    }
+
+    // controls
+    renderer.domElement.addEventListener('pointerdown', e => {
+      const rect = renderer.domElement.getBoundingClientRect();
+      pointer.x = ((e.clientX-rect.left)/rect.width)*2 - 1;
+      pointer.y = -((e.clientY-rect.top)/rect.height)*2 + 1;
+      raycaster.setFromCamera(pointer, camera);
+      const hit = raycaster.intersectObjects(nodeMeshes);
+      if(hit.length) { draggingNode = hit[0].object; simulation.alphaTarget(0.3).restart(); }
+      else { isDraggingView = true; lastMouse.x = e.clientX; lastMouse.y = e.clientY; }
+    });
+    renderer.domElement.addEventListener('pointermove', e => {
+      if(draggingNode) {
+        const rect = renderer.domElement.getBoundingClientRect();
+        pointer.x = ((e.clientX-rect.left)/rect.width)*2 - 1;
+        pointer.y = -((e.clientY-rect.top)/rect.height)*2 + 1;
+        raycaster.setFromCamera(pointer, camera);
+        const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(
+          camera.getWorldDirection(new THREE.Vector3()).clone().negate(), draggingNode.position);
+        const pos = new THREE.Vector3();
+        raycaster.ray.intersectPlane(plane, pos);
+        draggingNode.position.copy(pos);
+        const idx = nodeMeshes.indexOf(draggingNode);
+        nodes[idx].x = pos.x; nodes[idx].y = pos.y; nodes[idx].z = pos.z;
+        // updatePositions();
+      } else if(isDraggingView) {
+        const dx = e.clientX - lastMouse.x, dy = e.clientY - lastMouse.y;
+        theta -= dx*0.005; phi -= dy*0.005;
+        phi = Math.max(0.01, Math.min(Math.PI-0.01, phi)); updateCamera();
+        lastMouse.x = e.clientX; lastMouse.y = e.clientY;
+        // updatePositions();
+      }
+    });
+    renderer.domElement.addEventListener('pointerup', ()=>{ 
+        isDraggingView=false; 
+        // updatePositions(); 
+        if(draggingNode){ 
+            simulation.alphaTarget(0); 
+            draggingNode=null;
+        }
+    });
+    renderer.domElement.addEventListener('wheel', e=>{ 
+        radius+=e.deltaY*0.5; 
+        radius=Math.max(50,radius); 
+        // updatePositions();
+        updateCamera(); 
+    });
+
+    // UI
+    const forceRatio = document.getElementById('forceRatio');
+    document.getElementById('toggleLabels').addEventListener('change', e => { 
+        showLabels = e.target.checked;});
+    document.getElementById('demoBtn').onclick = () => {
+        loadGraph(sampleData);
+        fileNameDisplay.textContent = '';}
+    document.getElementById('displayBtn').onclick = () => { radius=INITIAL_RADIUS; theta=INITIAL_THETA; phi=INITIAL_PHI; updateCamera(); initSimulation(); };
+
+    // clear any previous selection when you open the dialog
+    document.getElementById('fileInput').addEventListener('click', () => {
+    document.getElementById('fileInput').value = '';
+    });
+
+    document.getElementById('fileInput').addEventListener('change', e => {
+    if (!e.target.files.length) return;
+    const fr = new FileReader();
+    fr.onload = () => loadGraph(fr.result);
+    fr.readAsText(e.target.files[0]);
+    });
+    // init
+    radius = INITIAL_RADIUS; theta = INITIAL_THETA; phi = INITIAL_PHI; updateCamera();
+    (function animate(){ 
+        requestAnimationFrame(animate); 
+        renderer.render(scene, camera); 
+        updatePositions();
+    })();
+
+    const fileInput = document.getElementById('fileInput');
+    const fileNameDisplay = document.getElementById('fileNameDisplay');
+    fileInput.addEventListener('change', e => {
+    fileNameDisplay.textContent = e.target.files[0]?.name || '';
+    });
+  </script>
+</body>
+</html>
