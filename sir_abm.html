@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>SIR ABM</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0 }
+    body {
+      background: #373737;
+      color: #eee;
+      font-family: Arial,Helvetica,sans-serif;
+      overflow: hidden;
+    }
+    #controls {
+        position: fixed;
+        top: 20px;
+        left: 20px;
+        width: 260px;      /* ← force a constant width */
+        max-width: 260px;  /* ← prevent it ever growing */
+        font-size: 24px;
+        background: rgba(255,255,255,0.1);
+        backdrop-filter: blur(10px);
+        border-radius: 12px;
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        z-index: 10;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+        color: #eee;
+    }
+    #controls label {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 18px;
+    }
+    #controls input[type=number] {
+      width: 100px;
+      font-size: 18px;
+      background: rgba(255,255,255,0.15);
+      border: 1px solid rgba(255,255,255,0.3);
+      border-radius: 6px;
+      color: #000;
+      padding: 4px 8px;
+    }
+    .checkbox-label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 18px;
+    }
+    .ctrl-buttons {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .ctrl-buttons button {
+      width: 200px;
+      height: 36px;
+      font-size: 18px;
+      background: rgba(255,255,255,0.15);
+      border: 1px solid rgba(255,255,255,0.3);
+      border-radius: 6px;
+      color: #fff;
+      cursor: pointer;
+    }
+    .ctrl-buttons button:active {
+      background: rgba(255,255,255,0.25);
+    }
+    #stats {
+      font-size: 18px;
+      display: flex;
+      justify-content: space-between;
+      padding-top: 8px;
+    }
+    #plotCanvas {
+      width: 100%;
+      height: 120px;
+      background: rgba(220, 220, 220, 0.754);
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 6px;
+      color:#373737;
+    }
+    canvas#simCanvas {
+      display: block;
+      position: absolute;
+      top: 0; left: 0;
+    }
+  </style>
+</head>
+<body>
+  <div id="controls">
+    <label>Individuals <input id="numAgents" type="number" value="500" min="2" max="2000"></label>
+    <label>Homes <input id="numHomes" type="number" value="150" min="1" max="200"></label>
+    <label>Schools <input id="numSchools" type="number" value="3" min="0" max="25"></label>
+    <label>Workplaces <input id="numWork" type="number" value="20" min="0" max="100"></label>
+    <label>Infectivity <input id="infectivity" type="number" step="0.01" value="0.02" min="0.001" max="1"></label>
+    <label>Infection Len <input id="infLength" type="number" value="168" min="1" max="1000"></label>
+    <label>Hour Dur (ms) <input id="hourDuration" type="number" step="10" value="100" min="1" max="2000"></label>
+    <label class="checkbox-label"><input id="closeSchools" type="checkbox">school closure</label>
+    <label class="checkbox-label"><input id="closeWork" type="checkbox">workplace closure</label>
+    <div class="ctrl-buttons">
+      <button id="startBtn">Start</button>
+      <button id="stopBtn">Stop</button>
+      <button id="resetBtn">Reset</button>
+    </div>
+    <div id="stats">
+      <div>S: <span id="susCount">0</span></div>
+      <div>I: <span id="infCount">0</span></div>
+      <div>R: <span id="recCount">0</span></div>
+    </div>
+    <canvas id="plotCanvas"></canvas>
+  </div>
+  <canvas id="simCanvas"></canvas>
+  <script>
+    // -- Setup & Utilities --
+    const simCanvas = document.getElementById('simCanvas'),
+          ctx       = simCanvas.getContext('2d'),
+          plotCanvas= document.getElementById('plotCanvas'),
+          pctx      = plotCanvas.getContext('2d');
+    let params, agents = [], locations = [], simTime = 0;
+    let tickTimer, animID, lastTickTime = 0, running = false;
+    const series = { S: [], I: [], R: [] };
+    function clamp(v, min, max){ return Math.min(Math.max(v, min), max); }
+    // enforce min/max on number inputs
+    document.querySelectorAll('#controls input[type=number]').forEach(inp=>{
+      inp.addEventListener('change',()=>{
+        let v = parseFloat(inp.value);
+        if(isNaN(v)) return;
+        if(inp.min) v = clamp(v, parseFloat(inp.min), parseFloat(inp.max));
+        inp.value = v;
+      });
+    });
+    window.addEventListener('resize', resizeAll);
+
+    // -- Classes --
+    class Location {
+      constructor(x,y,w,h,type){ Object.assign(this,{x,y,w,h,type}); }
+      draw(){ const cols = { 
+        home:'#5E94C1', 
+        school:'#A35EC1', 
+        work:'#5EC18B' };
+        ctx.fillStyle = cols[this.type]||'#666';
+        ctx.fillRect(this.x,this.y,this.w,this.h);
+      }
+    }
+    class Agent {
+      constructor(home,school,work,other){
+        Object.assign(this,{home,school,work,other});
+        this.x = home.x + Math.random()*home.w;
+        this.y = home.y + Math.random()*home.h;
+        this.startX=this.x; this.startY=this.y;
+        this.tx=this.x; this.ty=this.y;
+        this.status='S'; this.infectAt=0;
+      }
+      updateTarget(){
+        const hour=simTime%24, day=Math.floor(simTime/24),
+              wknd=(day%7>=5),
+              closed=(this.school&&params.closeSchools)||(this.work&&params.closeWork);
+        let dest=this.home;
+        if(this.school&&!params.closeSchools&&hour>=8&&hour<15) dest=this.school;
+        else if(this.work&&!params.closeWork&&hour>=this.workStart&&hour<this.workStart+8) dest=this.work;
+        else if(this.other&&hour>=17&&hour<20){
+          const hasRole=!!(this.school||this.work);
+          if(!hasRole||(hasRole&&(wknd||closed))) dest=this.other;
+        }
+        this.startX=this.x; this.startY=this.y;
+        this.tx=dest.x+Math.random()*dest.w;
+        this.ty=dest.y+Math.random()*dest.h;
+        this.target=dest;
+      }
+      draw(){
+        ctx.beginPath();
+        ctx.arc(this.x,this.y,3,0,2*Math.PI);
+        ctx.fillStyle = this.status==='S'? '#000'
+                       : this.status==='I'? '#f00'
+                       : '#0f0';
+        ctx.fill();
+      }
+    }
+
+    closeSchools.addEventListener('change', () => {
+      params.closeSchools = closeSchools.checked;
+    });
+
+    closeWork.addEventListener('change', () => {
+      params.closeWork = closeWork.checked;
+    });
+
+    // -- Initialization --
+    function init(){
+      stop();
+      simTime=0;
+      const raw = {
+        N:+numAgents.value, nHome:+numHomes.value, nSchool:+numSchools.value,
+        nWork:+numWork.value, infectivity:+infectivity.value,
+        infLength:+infLength.value, hourDuration:+hourDuration.value
+      };
+      params = {
+        N: clamp(raw.N,2,2000),
+        nHome: clamp(raw.nHome,1,200),
+        nSchool: clamp(raw.nSchool,0,25),
+        nWork: clamp(raw.nWork,0,100),
+        infectivity: clamp(raw.infectivity,0.001,1),
+        infLength: clamp(raw.infLength,1,1000),
+        hourDuration: clamp(raw.hourDuration,1,2000),
+        closeSchools: closeSchools.checked,
+        closeWork: closeWork.checked
+      };
+      // reflect back
+      numAgents.value    = params.N;
+      numHomes.value     = params.nHome;
+      numSchools.value   = params.nSchool;
+      numWork.value      = params.nWork;
+      infectivity.value  = params.infectivity;
+      infLength.value    = params.infLength;
+      hourDuration.value = params.hourDuration;
+
+      agents=[]; locations=[]; series.S=[]; series.I=[]; series.R=[];
+
+      const margin=5;
+      function place(type,w,h){
+        for(let i=0;i<1000;i++){
+          const x=Math.random()*(simCanvas.width-w),
+                y=Math.random()*(simCanvas.height-h);
+          if(!locations.some(l=>
+              !(x>l.x+l.w+margin||x+w+margin<l.x||
+                y>l.y+l.h+margin||y+h+margin<l.y)
+            )){
+            locations.push(new Location(x,y,w,h,type));
+            return;
+          }
+        }
+        locations.push(new Location(0,0,w,h,type));
+      }
+
+      for(let i=0;i<params.nHome;i++)   place('home',20,20);
+      for(let i=0;i<params.nSchool;i++) place('school',60,30);
+      for(let i=0;i<params.nWork;i++)   place('work',30,60);
+
+      const homes=locations.filter(l=>l.type==='home'),
+            schools=locations.filter(l=>l.type==='school'),
+            works=locations.filter(l=>l.type==='work');
+
+      const numStu=Math.floor(params.N*0.2),
+            numWk=Math.floor(params.N*0.4),
+            numNone=params.N-numStu-numWk;
+      const roles=[...Array(numStu).fill('student'),
+                   ...Array(numWk).fill('worker'),
+                   ...Array(numNone).fill('none')];
+      for(let i=roles.length-1;i>0;i--){
+        const j=Math.floor(Math.random()*(i+1));
+        [roles[i],roles[j]]=[roles[j],roles[i]];
+      }
+
+      for (let i = 0; i < params.N; i++) {
+      const home   = homes[i % homes.length];
+      const role   = roles[i];
+      const school = role === 'student'
+                      ? schools[Math.floor(Math.random() * schools.length)]
+                      : null;
+      const work   = role === 'worker'
+                      ? works[Math.floor(Math.random() * works.length)]
+                      : null;
+      // ← NEW: randomly pick one of the other homes, if any
+      let other = null;
+      if (Math.random() < 0.5) {
+          const choices = homes.filter(h => h !== home);
+          other = choices[Math.floor(Math.random() * choices.length)];
+      }
+
+      const a = new Agent(home, school, work, other);
+      if (a.work) a.workStart = 7 + Math.random() * 2;
+      agents.push(a);
+      }
+
+      // seed infection
+      const p0=agents[Math.floor(Math.random()*agents.length)];
+      p0.status='I'; p0.infectAt=0;
+
+      resizeAll();
+      updateStats();
+      drawInitial();
+    }
+
+    // -- Simulation Tick & Animate --
+    function tick(){
+      lastTickTime = performance.now();
+      agents.forEach(a=>a.updateTarget());
+      const groups=new Map();
+      agents.forEach(a=>{
+        if(!groups.has(a.target)) groups.set(a.target,[]);
+        groups.get(a.target).push(a);
+      });
+      groups.forEach(g=>{
+        const ic=g.filter(a=>a.status==='I').length;
+        if(ic){
+          const p=1-Math.pow(1-params.infectivity,ic);
+          g.forEach(a=>{ if(a.status==='S'&&Math.random()<p){
+            a.status='I'; a.infectAt=simTime;
+          } });
+        }
+      });
+      agents.forEach(a=>{ if(a.status==='I'&&simTime-a.infectAt>=params.infLength){
+        a.status='R';
+      }});
+      const c={S:0,I:0,R:0};
+      agents.forEach(a=>c[a.status]++);
+      series.S.push(c.S); series.I.push(c.I); series.R.push(c.R);
+      simTime++;
+      updateStats();
+      drawPlot();
+    }
+
+    function animate(now){
+      if(!running) return;
+      const elapsed = now - lastTickTime,
+            half = params.hourDuration/2,
+            t = Math.min(elapsed/half,1);
+      ctx.clearRect(0,0,simCanvas.width,simCanvas.height);
+      locations.forEach(l=>l.draw());
+      agents.forEach(a=>{
+        if(elapsed<=half){
+          a.x=a.startX+(a.tx-a.startX)*t;
+          a.y=a.startY+(a.ty-a.startY)*t;
+        } else {
+          a.x=a.tx; a.y=a.ty;
+        }
+        a.draw();
+      });
+      animID = requestAnimationFrame(animate);
+    }
+
+    function drawInitial(){
+      ctx.clearRect(0,0,simCanvas.width,simCanvas.height);
+      locations.forEach(l=>l.draw());
+      agents.forEach(a=>a.draw());
+      drawPlot();
+    }
+
+    // -- Plotting --
+    function drawPlot(){
+      const w=plotCanvas.width, h=plotCanvas.height;
+      pctx.clearRect(0,0,w,h);
+      if(series.S.length<2) return;
+      const maxT=series.S.length-1;
+      const colors={S:'#007bff', I:'#dc3545', R:'#28a745'};
+      ['S','I','R'].forEach(key=>{
+        pctx.beginPath();
+        pctx.strokeStyle=colors[key];
+        series[key].forEach((v,i)=>{
+          const x=(i/maxT)*w, y=h-(v/params.N)*h;
+          i? pctx.lineTo(x,y): pctx.moveTo(x,y);
+        });
+        pctx.stroke();
+      });
+      pctx.font='12px Arial';
+      ['S','I','R'].forEach((key,idx)=>{
+        pctx.fillStyle='#000';
+        pctx.fillText(key,10,14+16*idx);
+        pctx.fillStyle=colors[key];
+        pctx.fillRect(35,6+16*idx,12,8);
+      });
+    }
+
+    // -- Controls --
+    function start(){
+      if(running) return;
+      running=true;
+      tick();
+      tickTimer = setInterval(tick, params.hourDuration);
+      animID = requestAnimationFrame(animate);
+    }
+    function stop(){
+      running=false;
+      clearInterval(tickTimer);
+      cancelAnimationFrame(animID);
+    }
+    function updateStats(){
+      const c={S:0,I:0,R:0};
+      agents.forEach(a=>c[a.status]++);
+      susCount.textContent=c.S;
+      infCount.textContent=c.I;
+      recCount.textContent=c.R;
+    }
+    function resizeAll(){
+      const ctrl=document.getElementById('controls'),
+            off=ctrl.clientWidth+40;
+      simCanvas.width=window.innerWidth-off;
+      simCanvas.height=window.innerHeight;
+      simCanvas.style.left=off+'px';
+      plotCanvas.width=ctrl.clientWidth-20;
+      plotCanvas.height=120;
+    }
+
+    startBtn.onclick=start;
+    stopBtn.onclick=stop;
+    resetBtn.onclick=init;
+    window.onload = ()=>{ resizeAll(); init(); };
+  </script>
+</body>
+</html>
