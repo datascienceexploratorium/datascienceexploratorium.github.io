@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>3-Body Problems</title>
+  <style>
+    html, body {
+      width: 100vw; height: 100vh;
+      background: #111;
+      color: #eee;
+      font-family: Arial,Helvetica,sans-serif;
+      overflow: hidden;
+    }
+    #controls {
+      position: fixed;
+      left: 0; top: 0; bottom: 0;
+      width: 350px;
+      background: rgba(18,18,18,0.97);
+      box-shadow: 8px 0 32px rgba(0,0,0,0.58);
+      border-radius: 0 22px 22px 0;
+      padding: 28px 28px 28px 28px;
+      z-index: 20;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      font-size: 19px;
+    }
+    .ctrl-buttons {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      margin-bottom: 10px;
+    }
+    #controls button {
+      width: 100%;
+      min-width: 0;
+      height: 48px;
+      font-size: 21px;
+      background: rgba(88,88,88,0.92);
+      border: 1px solid rgba(255,255,255,0.17);
+      border-radius: 8px;
+      color: #fff;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    #controls button:active {
+      background: rgba(140,200,140,0.22);
+    }
+    .stepper-slider {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 19px;
+      white-space: nowrap;
+    }
+    .stepper-slider span {
+      min-width: 150px;
+      font-size: 19px;
+      font-weight: 500;
+    }
+    .stepper-slider input[type="range"] {
+      width: 120px;
+      height: 6px;
+      background: rgba(255,255,255,0.14);
+      border-radius: 3px;
+      cursor: pointer;
+      accent-color: #3af;
+    }
+    .stepper-slider input[type="number"] {
+      width: 64px;
+      font-size: 19px;
+      padding: 2px 6px;
+    }
+    .planet-control-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 18px;
+      margin-top: 8px;
+      margin-bottom: 0;
+      white-space: nowrap;
+    }
+    .planet-control-row label {
+      font-size: 18px;
+      margin-right: 2px;
+      font-weight: 400;
+    }
+    .planet-control-row input[type=number] {
+      width: 68px;
+      font-size: 18px;
+      padding: 2px 6px;
+      margin-right: 14px;
+    }
+    .planet-control-row input[type=checkbox] {
+      width: 18px; height: 18px;
+      margin-left: 6px;
+      accent-color: #3af;
+    }
+    #simCanvas {
+      position: absolute;
+      left: 350px; top: 0;
+      width: calc(100vw - 350px);
+      height: 100vh;
+      background: #111;
+      display: block;
+      z-index: 1;
+    }
+    @media (max-width: 700px) {
+      #controls { width: 100vw; position: static; border-radius: 0; }
+      #simCanvas { left: 0; width: 100vw; }
+    }
+  </style>
+</head>
+<body>
+  <div id="controls">
+    <div class="ctrl-buttons">
+      <button id="startStop">Start</button>
+      <button id="reset">Reset</button>
+      <button id="stableBtn">Stable Placement</button>
+    </div>
+    <div class="stepper-slider">
+      <span>Number of planets:</span>
+      <input type="number" id="numPlanets" min="1" max="20" value="3">
+    </div>
+    <div class="stepper-slider">
+      <span>Gravity (G):</span>
+      <input type="range" id="gravControl" min="0" max="5" step="0.1" value="1">
+      <span id="gravValue">1.0</span>
+    </div>
+    <div class="stepper-slider">
+      <span>Animation Speed:</span>
+      <input type="range" id="timeControl" min="0.1" max="5" step="0.1" value="1">
+      <span id="timeValue">1.0</span>
+    </div>
+    <div id="massInputs"></div>
+  </div>
+  <canvas id="simCanvas"></canvas>
+  <script>
+    const canvas = document.getElementById('simCanvas');
+    const ctx = canvas.getContext('2d');
+    const startStopBtn = document.getElementById('startStop');
+    const resetBtn = document.getElementById('reset');
+    const stableBtn = document.getElementById('stableBtn');
+    const numPlanetsInput = document.getElementById('numPlanets');
+    const gravSlider = document.getElementById('gravControl');
+    const gravValue = document.getElementById('gravValue');
+    const speedSlider = document.getElementById('timeControl');
+    const speedValue = document.getElementById('timeValue');
+    const massInputsDiv = document.getElementById('massInputs');
+    let planets = [], animating = false;
+    let dragPlanet = null, dragMode = null;
+
+    const dtBase = 0.01;
+    let animSpeed = 1;
+    const velScale = 0.2;
+    const dragEffect = 0.01;
+    const sizeScale = 5;
+    const trajSteps = 50000;
+
+    function resizeCanvas() {
+      const width = window.innerWidth - 350;
+      const height = window.innerHeight;
+      canvas.width = width;
+      canvas.height = height;
+      canvas.style.width = width + 'px';
+      canvas.style.height = height + 'px';
+      draw();
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    gravSlider.addEventListener('input', () => { gravValue.textContent = gravSlider.value; draw(); });
+    speedSlider.addEventListener('input', () => {
+      animSpeed = +speedSlider.value * 50;
+      speedValue.textContent = Math.round(animSpeed);
+    });
+    numPlanetsInput.addEventListener('input', initPlanets);
+
+    function initPlanets() {
+      planets = [];
+      massInputsDiv.innerHTML = '';
+      const n = parseInt(numPlanetsInput.value, 10);
+      const fixedIndex = Math.floor(Math.random() * n);
+      for (let i = 0; i < n; i++) {
+        const m = 20 + Math.random() * 180;
+        const r = sizeScale * Math.sqrt(m / Math.PI);
+        let x, y;
+        do {
+          x = r + Math.random() * (canvas.width - 2*r);
+          y = r + Math.random() * (canvas.height - 2*r);
+        } while (planets.some(p => Math.hypot(p.x-x, p.y-y) < p.r + r + 10));
+        const vx = (Math.random() - 0.5) * 0.5;
+        const vy = (Math.random() - 0.5) * 0.5;
+        const fixed = (i === fixedIndex);
+        planets.push({ m, r, x, y, vx, vy, color: `hsl(${Math.random()*360},50%,70%)`, fixed, dragDx:0, dragDy:0 });
+
+        // Controls row, with "Planet # Mass: [num] Fixed [ ]"
+        const row = document.createElement('div');
+        row.className = 'planet-control-row';
+
+        const label = document.createElement('span');
+        label.textContent = `Planet ${i+1}`;
+        label.style.marginRight = "8px";
+
+        const massLabel = document.createElement('label');
+        massLabel.textContent = 'Mass:';
+        massLabel.setAttribute('for', `massInput${i}`);
+
+        const inpMass = document.createElement('input');
+        inpMass.type = 'number'; inpMass.min = '1'; inpMass.step = '1'; inpMass.value = m.toFixed(0);
+        inpMass.id = `massInput${i}`;
+        inpMass.dataset.index = i;
+        inpMass.addEventListener('input', e => {
+          const idx = +e.target.dataset.index;
+          const val = +e.target.value;
+          if (val > 0) { planets[idx].m = val; planets[idx].r = sizeScale * Math.sqrt(val / Math.PI); draw(); }
+        });
+
+        const fixedLabel = document.createElement('label');
+        fixedLabel.textContent = 'Fixed';
+        fixedLabel.setAttribute('for', `fixedInput${i}`);
+        fixedLabel.style.marginLeft='4px';
+
+        const inpFixed = document.createElement('input');
+        inpFixed.type = 'checkbox'; inpFixed.checked = fixed;
+        inpFixed.id = `fixedInput${i}`;
+        inpFixed.dataset.index = i;
+        inpFixed.addEventListener('change', e => {
+          const idx = +e.target.dataset.index;
+          planets[idx].fixed = e.target.checked;
+          draw();
+        });
+
+        row.appendChild(label);
+        row.appendChild(massLabel);
+        row.appendChild(inpMass);
+        row.appendChild(fixedLabel);
+        row.appendChild(inpFixed);
+
+        massInputsDiv.appendChild(row);
+      }
+      draw();
+    }
+
+    function predictPaths() {
+      const G = +gravSlider.value * 10;
+      const dt = dtBase;
+      const clones = planets.map(p => ({ x:p.x, y:p.y, vx:p.vx, vy:p.vy, m:p.m, fixed:p.fixed }));
+      const paths = clones.map(() => []);
+      for (let step = 0; step < trajSteps; step++) {
+        clones.forEach((c,i) => { if (!c.fixed) paths[i].push({ x:c.x, y:c.y }); });
+        const forces = clones.map(() => ({ fx:0, fy:0 }));
+        for (let i = 0; i < clones.length; i++) {
+          for (let j = i+1; j < clones.length; j++) {
+            const a = clones[i], b = clones[j];
+            const dx = b.x - a.x, dy = b.y - a.y;
+            const dist = Math.hypot(dx,dy) || 1;
+            const F = G * a.m * b.m / (dist * dist);
+            const fx = F * dx / dist, fy = F * dy / dist;
+            forces[i].fx += fx; forces[i].fy += fy;
+            forces[j].fx -= fx; forces[j].fy -= fy;
+          }
+        }
+        clones.forEach((c,i) => {
+          if (!c.fixed) {
+            c.vx += forces[i].fx / c.m * dt;
+            c.vy += forces[i].fy / c.m * dt;
+            c.x  += c.vx * dt;
+            c.y  += c.vy * dt;
+          }
+        });
+      }
+      return paths;
+    }
+
+    function drawPredictions() {
+      const paths = predictPaths();
+      ctx.strokeStyle='rgba(255,255,255,0.2)'; ctx.lineWidth=2;
+      paths.forEach(path => {
+        ctx.beginPath();
+        path.forEach((pt,idx) => idx===0 ? ctx.moveTo(pt.x,pt.y) : ctx.lineTo(pt.x,pt.y));
+        ctx.stroke();
+      });
+    }
+
+    function draw() {
+      if (animating) {
+        for (let i = 0; i < animSpeed; i++) simulate();
+      }
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      drawPredictions();
+      planets.forEach(p => {
+        drawPlanet(p);
+        if (!p.fixed) drawArrow(p);
+      });
+      if (animating) requestAnimationFrame(draw);
+    }
+
+    function drawPlanet(p) {
+      ctx.fillStyle = p.color;
+      ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,Math.PI*2); ctx.fill();
+    }
+
+    function drawArrow(p) {
+      let hx, hy;
+      if (dragPlanet === p && dragMode === 'vector') {
+        hx = p.x + p.dragDx;
+        hy = p.y + p.dragDy;
+      } else {
+        hx = p.x + p.vx / velScale;
+        hy = p.y + p.vy / velScale;
+      }
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(p.x,p.y); ctx.lineTo(hx,hy); ctx.stroke();
+      const ang = Math.atan2(hy-p.y, hx-p.x);
+      const hl = 10;
+      ctx.beginPath();
+      ctx.moveTo(hx,hy);
+      ctx.lineTo(hx - hl * Math.cos(ang - Math.PI/6), hy - hl * Math.sin(ang - Math.PI/6));
+      ctx.lineTo(hx - hl * Math.cos(ang + Math.PI/6), hy - hl * Math.sin(ang + Math.PI/6));
+      ctx.closePath(); ctx.fillStyle = '#fff'; ctx.fill();
+    }
+
+    function simulate() {
+      const G = +gravSlider.value * 10;
+      const dt = dtBase;
+      const forces = planets.map(() => ({ fx:0, fy:0 }));
+      for (let i = 0; i < planets.length; i++) {
+        for (let j = i+1; j < planets.length; j++) {
+          const a = planets[i], b = planets[j];
+          const dx = b.x - a.x, dy = b.y - a.y;
+          const dist = Math.hypot(dx,dy) || 1;
+          const F = G * a.m * b.m / (dist * dist);
+          const fx = F * dx / dist, fy = F * dy / dist;
+          forces[i].fx += fx; forces[i].fy += fy;
+          forces[j].fx -= fx; forces[j].fy -= fy;
+        }
+      }
+      planets.forEach((p,i) => {
+        if (!p.fixed) {
+          p.vx += forces[i].fx / p.m * dt;
+          p.vy += forces[i].fy / p.m * dt;
+          p.x  += p.vx * dt;
+          p.y  += p.vy * dt;
+        } else {
+          p.vx = 0; p.vy = 0;
+        }
+      });
+    }
+
+    // ===== CRITICAL: Mouse event offset fixed for left pane =====
+    function getCanvasMouse(e) {
+      // Get mouse relative to the top-left of the canvas only (canvas is offset left:350px)
+      const rect = canvas.getBoundingClientRect();
+      return {
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top
+      };
+    }
+    canvas.addEventListener('mousedown', e => {
+      const {x:mx, y:my} = getCanvasMouse(e);
+      dragPlanet = null; dragMode = null;
+      planets.some(p => {
+        const hx = p.x + p.vx / velScale;
+        const hy = p.y + p.vy / velScale;
+        if (!p.fixed && Math.hypot(mx-hx, my-hy) < 12) {
+          dragPlanet = p; dragMode = 'vector';
+          p.dragDx = mx - p.x;
+          p.dragDy = my - p.y;
+          return true;
+        }
+        if (Math.hypot(mx-p.x, my-p.y) < p.r) {
+          dragPlanet = p; dragMode = 'body';
+          return true;
+        }
+      });
+    });
+    window.addEventListener('mousemove', e => {
+      if (!dragPlanet) return;
+      const {x:mx, y:my} = getCanvasMouse(e);
+      if (dragMode === 'vector') {
+        const dx = mx - dragPlanet.x;
+        const dy = my - dragPlanet.y;
+        dragPlanet.dragDx = dx;
+        dragPlanet.dragDy = dy;
+        dragPlanet.vx = dx * dragEffect;
+        dragPlanet.vy = dy * dragEffect;
+      } else if (dragMode === 'body') {
+        dragPlanet.x = mx;
+        dragPlanet.y = my;
+      }
+      draw();
+    });
+    window.addEventListener('mouseup', () => { dragPlanet = null; dragMode = null; });
+
+    startStopBtn.addEventListener('click', () => {
+      animating = !animating;
+      startStopBtn.textContent = animating ? 'Stop' : 'Start';
+      if (animating) requestAnimationFrame(draw);
+    });
+    resetBtn.addEventListener('click', () => { animating = false; startStopBtn.textContent = 'Start'; initPlanets(); });
+
+    stableBtn.addEventListener('click', () => {
+      const n = 3;
+      const m = 100;
+      const r = sizeScale * Math.sqrt(m / Math.PI);
+      const centerX = canvas.width/2, centerY = canvas.height/2;
+      const R = Math.min(canvas.width, canvas.height) * 0.22;
+      planets = [];
+      for (let i = 0; i < n; i++) {
+        const theta = 2 * Math.PI * i / n - Math.PI/2;
+        const x = centerX + R * Math.cos(theta);
+        const y = centerY + R * Math.sin(theta);
+        const G = +gravSlider.value * 10;
+        const v = Math.sqrt(G * m / (R * 2 * Math.sin(Math.PI/3)));
+        const angle = theta + Math.PI/2;
+        const vx = v * Math.cos(angle);
+        const vy = v * Math.sin(angle);
+        planets.push({
+          m, r, x, y, vx, vy,
+          color: `hsl(${Math.random()*360},50%,70%)`,
+          fixed: false, dragDx: 0, dragDy: 0
+        });
+      }
+      initMassInputsForStable();
+      draw();
+    });
+
+    function initMassInputsForStable() {
+      massInputsDiv.innerHTML = '';
+      for (let i = 0; i < planets.length; i++) {
+        const row = document.createElement('div');
+        row.className = 'planet-control-row';
+        const label = document.createElement('span');
+        label.textContent = `Planet ${i+1}`;
+        label.style.marginRight = "8px";
+        const massLabel = document.createElement('label');
+        massLabel.textContent = 'Mass:';
+        massLabel.setAttribute('for', `massInput${i}`);
+        const inpMass = document.createElement('input');
+        inpMass.type = 'number'; inpMass.min = '1'; inpMass.step = '1';
+        inpMass.value = planets[i].m.toFixed(0);
+        inpMass.id = `massInput${i}`;
+        inpMass.dataset.index = i;
+        inpMass.addEventListener('input', e => {
+          const idx = +e.target.dataset.index;
+          const val = +e.target.value;
+          if (val > 0) {
+            planets[idx].m = val;
+            planets[idx].r = sizeScale * Math.sqrt(val / Math.PI);
+            draw();
+          }
+        });
+        const fixedLabel = document.createElement('label');
+        fixedLabel.textContent = 'Fixed';
+        fixedLabel.setAttribute('for', `fixedInput${i}`);
+        fixedLabel.style.marginLeft='4px';
+        const inpFixed = document.createElement('input');
+        inpFixed.type = 'checkbox'; inpFixed.checked = false;
+        inpFixed.id = `fixedInput${i}`;
+        inpFixed.dataset.index = i;
+        inpFixed.addEventListener('change', e => {
+          const idx = +e.target.dataset.index;
+          planets[idx].fixed = e.target.checked;
+          draw();
+        });
+        row.appendChild(label);
+        row.appendChild(massLabel);
+        row.appendChild(inpMass);
+        row.appendChild(fixedLabel);
+        row.appendChild(inpFixed);
+        massInputsDiv.appendChild(row);
+      }
+    }
+
+    initPlanets();
+  </script>
+</body>
+</html>
