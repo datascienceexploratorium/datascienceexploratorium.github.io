@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cubic Spline Plotter</title>
+    <style>
+        * { 
+            box-sizing: border-box; 
+            margin: 0; 
+            padding: 0;
+        }
+        body {
+            background: #111;
+            color: #eee;
+            font-family: Arial, Helvetica, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .main-container {
+            width: 100%;
+            max-width: 900px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .header, .canvas-container, .equations-container {
+            background: rgba(255,255,255,0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 12px;
+            padding: 16px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+        .header {
+            text-align: center;
+        }
+        .header h1 {
+            font-size: 2em;
+            margin-bottom: 8px;
+        }
+        .header p {
+            color: #ccc;
+        }
+        .canvas-container {
+            width: 100%;
+            aspect-ratio: 16 / 9;
+            padding: 0;
+            overflow: hidden;
+        }
+        canvas {
+            cursor: crosshair;
+            touch-action: none;
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+        .equations-container {
+            font-family: monospace;
+            font-size: 0.9em;
+        }
+        #no-points-message {
+            text-align: center;
+            color: #888;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="main-container">
+        <div class="header">
+            <h1>Cubic Spline Plotter</h1>
+            <p>(Constrainted to positive values)</p>
+        </div>
+
+        <div class="canvas-container">
+            <canvas id="splineCanvas"></canvas>
+        </div>
+        
+        <div id="equations-container">
+            <!-- Spline equations will be rendered here -->
+        </div>
+        <div id="no-points-message">Click to add points. Drag to move them. Click a point without moving to delete it.</div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('splineCanvas');
+        const ctx = canvas.getContext('2d');
+        const noPointsMessage = document.getElementById('no-points-message');
+        const equationsContainer = document.getElementById('equations-container');
+
+        // --- Configuration ---
+        const padding = 30; // Inset padding for the axes and grid
+        const pointRadius = 8;
+        const clickThreshold = 5; // Max pixels mouse can move to be considered a click
+
+        // --- State Management ---
+        let userPoints = [];
+        let fixedPoints = [];
+        let selectedPointIndex = -1;
+        let isDragging = false;
+        let dragStartPos = { x: 0, y: 0 };
+        
+        // --- Canvas and Coordinate System Setup ---
+        function resizeCanvas() {
+            const container = canvas.parentElement;
+            const dpr = window.devicePixelRatio || 1;
+            
+            // Set canvas size based on its container
+            const rect = container.getBoundingClientRect();
+            canvas.width = rect.width * dpr;
+            canvas.height = rect.height * dpr;
+            ctx.scale(dpr, dpr);
+            
+            // Update style to ensure it fits the container
+            canvas.style.width = `${rect.width}px`;
+            canvas.style.height = `${rect.height}px`;
+            
+            const worldWidth = canvas.clientWidth - 2 * padding;
+            fixedPoints = [
+                { x: 0, y: 0, isFixed: true },
+                { x: worldWidth, y: 0, isFixed: true }
+            ];
+
+            draw();
+        }
+
+        function toWorldCoords(canvasX, canvasY) {
+            return {
+                x: canvasX - padding,
+                y: (canvas.clientHeight - padding) - canvasY
+            };
+        }
+
+        function toCanvasCoords(worldX, worldY) {
+            return {
+                x: worldX + padding,
+                y: (canvas.clientHeight - padding) - worldY
+            };
+        }
+
+        // --- Drawing Functions ---
+        function drawGrid() {
+            const width = canvas.clientWidth;
+            const height = canvas.clientHeight;
+            const gridSize = 50;
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+            ctx.lineWidth = 0.5;
+            for (let x = padding; x <= width - padding; x += gridSize) {
+                ctx.beginPath(); ctx.moveTo(x, padding); ctx.lineTo(x, height - padding); ctx.stroke();
+            }
+            for (let y = padding; y <= height - padding; y += gridSize) {
+                ctx.beginPath(); ctx.moveTo(padding, y); ctx.lineTo(width - padding, y); ctx.stroke();
+            }
+        }
+
+        function drawAxes() {
+            const width = canvas.clientWidth;
+            const height = canvas.clientHeight;
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+            ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(padding, height - padding); ctx.lineTo(width - padding, height - padding); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(padding, padding); ctx.lineTo(padding, height - padding); ctx.stroke();
+        }
+
+        function drawPoints(pointsToDraw) {
+            pointsToDraw.forEach((p, index) => {
+                const canvasCoords = toCanvasCoords(p.x, p.y);
+                ctx.beginPath();
+                ctx.arc(canvasCoords.x, canvasCoords.y, pointRadius, 0, Math.PI * 2);
+                if (p.isFixed) {
+                    ctx.fillStyle = '#94a3b8';
+                } else {
+                    const userPointIndexInCombinedArray = selectedPointIndex + fixedPoints.length;
+                    ctx.fillStyle = index === userPointIndexInCombinedArray ? '#38bdf8' : '#f87171';
+                }
+                ctx.fill();
+            });
+        }
+
+        function displaySplineEquations(spline) {
+            if (!spline || userPoints.length === 0) {
+                equationsContainer.innerHTML = '<p style="color: #888; text-align: center;">Add points to see the spline equations.</p>';
+                return;
+            }
+
+            let html = '<h3 style="font-size: 1.2em; font-weight: bold; color: #fff; margin-bottom: 12px; text-align: center;">Cubic Spline Equations</h3>';
+            for (let i = 0; i < spline.points.length - 1; i++) {
+                const p1 = spline.points[i];
+                const p2 = spline.points[i+1];
+                const a = spline.a[i];
+                const b = spline.b[i];
+                const c = spline.c[i];
+                const d = spline.d[i];
+
+                const formatTerm = (val, power, variable) => {
+                    if (Math.abs(val) < 1e-6) return '';
+                    const sign = val >= 0 ? ' + ' : ' - ';
+                    const absVal = Math.abs(val).toFixed(2);
+                    if (power === 0) return `${sign} ${absVal}`;
+                    if (power === 1) return `${sign} ${absVal}${variable}`;
+                    return `${sign} ${absVal}${variable}<sup>${power}</sup>`;
+                };
+                
+                const variable = `(x - ${p1.x.toFixed(2)})`;
+
+                html += `
+                    <div style="margin-bottom: 12px; padding: 8px; border-bottom: 1px solid rgba(255,255,255,0.1);">
+                        <p style="color: #a78bfa;">
+                            For x in [${p1.x.toFixed(2)}, ${p2.x.toFixed(2)}]
+                        </p>
+                        <p>
+                            S<sub>${i}</sub>(x) = ${a.toFixed(2)}
+                            ${formatTerm(b, 1, variable)}
+                            ${formatTerm(c, 2, variable)}
+                            ${formatTerm(d, 3, variable)}
+                        </p>
+                    </div>
+                `;
+            }
+            // Remove last border
+            html = html.replace(/border-bottom: 1px solid rgba\(255,255,255,0\.1\);(?![\s\S]*border-bottom)/, '');
+            equationsContainer.innerHTML = html;
+        }
+
+        // --- Cubic Spline Logic ---
+        function solveTridiagonal(A, b) {
+            const n = b.length;
+            const c_prime = new Array(n).fill(0), d_prime = new Array(n).fill(0);
+            c_prime[0] = A[0][1] / A[0][0];
+            d_prime[0] = b[0] / A[0][0];
+            for (let i = 1; i < n; i++) {
+                const m = 1.0 / (A[i][i] - A[i][i - 1] * c_prime[i - 1]);
+                c_prime[i] = A[i][i + 1] * m;
+                d_prime[i] = (b[i] - A[i][i - 1] * d_prime[i - 1]) * m;
+            }
+            const x = new Array(n).fill(0);
+            x[n - 1] = d_prime[n - 1];
+            for (let i = n - 2; i >= 0; i--) x[i] = d_prime[i] - c_prime[i] * x[i + 1];
+            return x;
+        }
+
+        function calculateSpline(points) {
+            if (points.length < 2) return null;
+            points.sort((a, b) => a.x - b.x);
+            const n = points.length;
+            const h = new Array(n - 1);
+            for (let i = 0; i < n - 1; i++) h[i] = points[i + 1].x - points[i].x;
+            const A = Array(n).fill(0).map(() => Array(n).fill(0));
+            A[0][0] = 1; A[n - 1][n - 1] = 1;
+            for (let i = 1; i < n - 1; i++) {
+                A[i][i - 1] = h[i - 1];
+                A[i][i] = 2 * (h[i - 1] + h[i]);
+                A[i][i + 1] = h[i];
+            }
+            const b_vec = new Array(n).fill(0);
+            for (let i = 1; i < n - 1; i++) b_vec[i] = 3 * ((points[i + 1].y - points[i].y) / h[i] - (points[i].y - points[i - 1].y) / h[i - 1]);
+            const c = solveTridiagonal(A, b_vec);
+            const a = new Array(n - 1), b_coeffs = new Array(n - 1), d = new Array(n - 1);
+            for (let i = 0; i < n - 1; i++) {
+                a[i] = points[i].y;
+                b_coeffs[i] = (points[i + 1].y - a[i]) / h[i] - h[i] * (c[i + 1] + 2 * c[i]) / 3;
+                d[i] = (c[i + 1] - c[i]) / (3 * h[i]);
+            }
+            return { a, b: b_coeffs, c: c.slice(0, -1), d, points };
+        }
+
+        function drawSpline(spline) {
+            if (!spline) return;
+            ctx.strokeStyle = '#a78bfa';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            for (let i = 0; i < spline.points.length - 1; i++) {
+                const p1 = spline.points[i], p2 = spline.points[i + 1];
+                const { a, b, c, d } = spline;
+                const startCanvas = toCanvasCoords(p1.x, p1.y);
+                if (i === 0) ctx.moveTo(startCanvas.x, startCanvas.y);
+                const steps = 100;
+                for (let j = 1; j <= steps; j++) {
+                    const t = j / steps, x_local = (p2.x - p1.x) * t;
+                    let y_val = a[i] + b[i] * x_local + c[i] * x_local ** 2 + d[i] * x_local ** 3;
+                    y_val = Math.max(0, y_val);
+                    const plotCanvas = toCanvasCoords(p1.x + x_local, y_val);
+                    ctx.lineTo(plotCanvas.x, plotCanvas.y);
+                }
+            }
+            ctx.stroke();
+        }
+
+        // --- Main Draw Loop ---
+        function draw() {
+            const clientWidth = canvas.clientWidth;
+            const clientHeight = canvas.clientHeight;
+            ctx.clearRect(0, 0, clientWidth, clientHeight);
+            drawGrid();
+            drawAxes();
+            const allPoints = [...fixedPoints, ...userPoints];
+            const spline = calculateSpline(allPoints);
+            drawSpline(spline);
+            noPointsMessage.style.display = userPoints.length > 0 ? 'none' : 'block';
+            drawPoints(allPoints);
+            displaySplineEquations(spline);
+        }
+
+        // --- Event Handlers ---
+        function getMousePos(evt) {
+            const rect = canvas.getBoundingClientRect();
+            const clientX = evt.clientX ?? evt.touches[0].clientX;
+            const clientY = evt.clientY ?? evt.touches[0].clientY;
+            return { x: clientX - rect.left, y: clientY - rect.top };
+        }
+
+        function findPointAt(canvasX, canvasY) {
+            for (let i = userPoints.length - 1; i >= 0; i--) {
+                const p = userPoints[i];
+                const canvasCoords = toCanvasCoords(p.x, p.y);
+                const dx = canvasCoords.x - canvasX, dy = canvasCoords.y - canvasY;
+                if (Math.sqrt(dx * dx + dy * dy) < pointRadius) return i;
+            }
+            return -1;
+        }
+
+        function handleStart(evt) {
+            evt.preventDefault();
+            const mousePos = getMousePos(evt);
+            selectedPointIndex = findPointAt(mousePos.x, mousePos.y);
+            if (selectedPointIndex !== -1) {
+                isDragging = true;
+                dragStartPos = mousePos;
+            }
+        }
+
+        function handleMove(evt) {
+            if (!isDragging || selectedPointIndex === -1) return;
+            evt.preventDefault();
+            const mousePos = getMousePos(evt);
+            const worldMouse = toWorldCoords(mousePos.x, mousePos.y);
+            const worldWidth = canvas.clientWidth - 2 * padding;
+            const worldHeight = canvas.clientHeight - 2 * padding;
+            userPoints[selectedPointIndex].x = Math.max(0, Math.min(worldWidth, worldMouse.x));
+            userPoints[selectedPointIndex].y = Math.max(0, Math.min(worldHeight, worldMouse.y));
+            draw();
+        }
+
+        function handleEnd(evt) {
+            evt.preventDefault();
+            const mousePos = getMousePos(evt.changedTouches ? evt.changedTouches[0] : evt);
+            const distMoved = Math.sqrt((mousePos.x - dragStartPos.x)**2 + (mousePos.y - dragStartPos.y)**2);
+            if (isDragging && distMoved < clickThreshold) {
+                userPoints.splice(selectedPointIndex, 1);
+            } else if (!isDragging) {
+                const worldMouse = toWorldCoords(mousePos.x, mousePos.y);
+                const worldWidth = canvas.clientWidth - 2 * padding;
+                const worldHeight = canvas.clientHeight - 2 * padding;
+                if (worldMouse.x >= 0 && worldMouse.x <= worldWidth && worldMouse.y >= 0 && worldMouse.y <= worldHeight) {
+                    userPoints.push({ x: worldMouse.x, y: worldMouse.y });
+                }
+            }
+            isDragging = false;
+            selectedPointIndex = -1;
+            draw();
+        }
+
+        // --- Initialization ---
+        const resizeObserver = new ResizeObserver(() => {
+            resizeCanvas();
+        });
+        resizeObserver.observe(canvas.parentElement);
+
+        canvas.addEventListener('mousedown', handleStart);
+        canvas.addEventListener('mousemove', handleMove);
+        canvas.addEventListener('mouseup', handleEnd);
+        canvas.addEventListener('mouseleave', () => {
+             if (isDragging) { isDragging = false; selectedPointIndex = -1; draw(); }
+        });
+        canvas.addEventListener('touchstart', handleStart);
+        canvas.addEventListener('touchmove', handleMove);
+        canvas.addEventListener('touchend', handleEnd);
+
+        resizeCanvas();
+    </script>
+</body>
+</html>
