@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Numerical Integration</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0 }
+        body {
+            background: #111;
+            color: #eee;
+            font-family: 'Inter', sans-serif;
+            display: flex;
+        }
+        #controls {
+            width: 340px; 
+            flex-shrink: 0;
+            height: 100vh;
+            overflow-y: auto;
+            background: #1c1c1c;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            z-index: 10;
+            border-right: 1px solid rgba(255,255,255,0.1);
+        }
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .control-group label {
+            font-weight: 500;
+            color: rgba(255,255,255,0.8);
+        }
+        .control-group select, .control-group input {
+            background: rgba(0,0,0,0.3);
+            border: 1px solid rgba(255,255,255,0.2);
+            color: #eee;
+            border-radius: 6px;
+            padding: 8px 12px;
+            font-size: 14px;
+        }
+        .control-group select:focus, .control-group input:focus {
+            outline: none;
+            border-color: #6BCB77;
+        }
+        .ctrl-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-top: 8px;
+        }
+        .ctrl-buttons button {
+            width: 100%;
+            height: 40px;
+            font-size: 16px;
+            font-weight: 600;
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.3);
+            border-radius: 6px;
+            color: #fff;
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+        }
+        .ctrl-buttons button:disabled {
+            background: rgba(255,255,255,0.05);
+            color: rgba(255,255,255,0.3);
+            cursor: not-allowed;
+        }
+        .ctrl-buttons button:not(:disabled):hover {
+            background: rgba(255,255,255,0.2);
+        }
+        .ctrl-buttons button:not(:disabled):active {
+            background: rgba(255,255,255,0.25);
+        }
+        #results-container {
+            margin-top: 12px;
+            padding-top: 16px;
+            border-top: 1px solid rgba(255,255,255,0.2);
+        }
+        #results-container h3 {
+            font-size: 18px;
+            text-align: center;
+            margin-bottom: 12px;
+            font-weight: 600;
+        }
+        .result-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 4px 0;
+        }
+        .result-item p:first-child {
+            color: rgba(255,255,255,0.7);
+        }
+        .result-item p:last-child {
+            font-weight: 700;
+            font-size: 18px;
+        }
+        #numericalResult { color: #818cf8; } 
+        #realResult { color: #4ade80; } 
+        #errorResult { color: #f87171; } 
+
+        #canvas-container {
+            flex-grow: 1;
+            height: 100vh;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="controls">
+        <div class="control-group">
+            <label for="integrationMethod">Integration Method</label>
+            <select id="integrationMethod">
+                <option value="midpoint">Midpoint Rule</option>
+                <option value="trapezoid">Trapezoid Rule</option>
+                <option value="simpson">Simpson's Rule</option>
+            </select>
+        </div>
+
+        <div class="control-group">
+            <label for="stepSize">Step Size (h)</label>
+            <input type="number" id="stepSize" value="0.5" step="0.01" min="0.01" max="2">
+        </div>
+
+        <div class="ctrl-buttons">
+            <button id="initButton">Initialize Function</button>
+            <button id="integrateButton" disabled>Integrate</button>
+        </div>
+
+        <div id="results-container">
+            <h3>Results</h3>
+            <div class="result-item">
+                <p>Numerical Integral:</p>
+                <p id="numericalResult">-</p>
+            </div>
+            <div class="result-item">
+                <p>Analytical Integral:</p>
+                <p id="realResult">-</p>
+            </div>
+             <div class="result-item">
+                <p>Absolute Error:</p>
+                <p id="errorResult">-</p>
+            </div>
+        </div>
+    </div>
+    
+    <div id="canvas-container">
+        <canvas id="visualizationCanvas"></canvas>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // DOM Elements
+            const canvas = document.getElementById('visualizationCanvas');
+            const ctx = canvas.getContext('2d');
+            const initButton = document.getElementById('initButton');
+            const integrateButton = document.getElementById('integrateButton');
+            const methodSelect = document.getElementById('integrationMethod');
+            const stepSizeInput = document.getElementById('stepSize');
+            const numericalResultEl = document.getElementById('numericalResult');
+            const realResultEl = document.getElementById('realResult');
+            const errorResultEl = document.getElementById('errorResult');
+
+            // State Management 
+            let appState = {
+                gaussians: [],
+                func: (x) => 0,
+                animationFrameId: null,
+                xMin: 0,
+                xMax: 10,
+                yMin: 0,
+                yMax: 0,
+                padding: 60,
+                width: 0,
+                height: 0,
+            };
+
+            // Math Functions 
+            const gaussian = (x, a, mu, sigma) => a * Math.exp(-Math.pow(x - mu, 2) / (2 * Math.pow(sigma, 2)));
+            const erf = (x) => {
+                const sign = (x >= 0) ? 1 : -1;
+                x = Math.abs(x);
+                const a1 = 0.254829592, a2 = -0.284496736, a3 = 1.421413741, a4 = -1.453152027, a5 = 1.061405429, p = 0.3275911;
+                const t = 1.0 / (1.0 + p * x);
+                const y = 1.0 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * Math.exp(-x * x);
+                return sign * y;
+            };
+            const integralGaussian = (a, b, amp, mu, sigma) => {
+                const term1 = erf((b - mu) / (sigma * Math.sqrt(2)));
+                const term2 = erf((a - mu) / (sigma * Math.sqrt(2)));
+                return amp * sigma * Math.sqrt(Math.PI / 2) * (term1 - term2);
+            };
+
+            // Canvas and Drawing
+            function resizeCanvas() {
+                const container = canvas.parentElement;
+                canvas.width = container.clientWidth;
+                canvas.height = container.clientHeight;
+                appState.width = canvas.width;
+                appState.height = canvas.height;
+                if (appState.gaussians.length > 0) {
+                    draw();
+                } else {
+                    drawInitialMessage();
+                }
+            }
+            
+            function drawInitialMessage() {
+                ctx.clearRect(0, 0, appState.width, appState.height);
+                ctx.save();
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+                ctx.font = '24px Inter';
+                ctx.fillText('Click "Initialize Function" to begin', appState.width / 2, appState.height / 2);
+                ctx.restore();
+            }
+
+            const mapX = (x) => appState.padding + (x - appState.xMin) / (appState.xMax - appState.xMin) * (appState.width - 2 * appState.padding);
+            const mapY = (y) => (appState.height - appState.padding) - (y - appState.yMin) / (appState.yMax - appState.yMin) * (appState.height - 2 * appState.padding);
+
+            function drawAxes() {
+                ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+                ctx.fillStyle = 'rgba(255,255,255,0.6)';
+                ctx.lineWidth = 1;
+                ctx.font = '12px Inter';
+
+                ctx.beginPath();
+                ctx.moveTo(mapX(appState.xMin), mapY(appState.yMin));
+                ctx.lineTo(mapX(appState.xMin), mapY(appState.yMax));
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(mapX(appState.xMin), mapY(appState.yMin));
+                ctx.lineTo(mapX(appState.xMax), mapY(appState.yMin));
+                ctx.stroke();
+                
+                for (let i = 0; i <= 10; i++) {
+                    ctx.fillText(i.toString(), mapX(i) - (i === 0 ? 0 : 4), mapY(appState.yMin) + 20);
+                }
+                const yStep = appState.yMax / 5;
+                for (let i = 1; i <= 5; i++) {
+                    const yVal = i * yStep;
+                    ctx.fillText(yVal.toFixed(1), mapX(appState.xMin) - 35, mapY(yVal) + 4);
+                }
+            }
+
+            function drawFunction() {
+                ctx.save();
+                ctx.strokeStyle = '#6BCB77';
+                ctx.lineWidth = 3;
+                ctx.shadowColor = 'rgba(107, 203, 119, 0.5)';
+                ctx.shadowBlur = 8;
+                ctx.beginPath();
+                const step = (appState.xMax - appState.xMin) / (appState.width);
+                for (let x = appState.xMin; x <= appState.xMax; x += step) {
+                    const y = appState.func(x);
+                    if (x === appState.xMin) {
+                        ctx.moveTo(mapX(x), mapY(y));
+                    } else {
+                        ctx.lineTo(mapX(x), mapY(y));
+                    }
+                }
+                ctx.stroke();
+                ctx.restore();
+            }
+            
+            function draw() {
+                ctx.clearRect(0, 0, appState.width, appState.height);
+                drawAxes();
+                drawFunction();
+            }
+
+            // Core Logic
+            function initializeFunction() {
+                if (appState.animationFrameId) {
+                    cancelAnimationFrame(appState.animationFrameId);
+                    appState.animationFrameId = null;
+                }
+                appState.gaussians = [];
+                numericalResultEl.textContent = '-';
+                realResultEl.textContent = '-';
+                errorResultEl.textContent = '-';
+
+                const numGaussians = Math.floor(Math.random() * 4) + 2;
+                let maxY = 0;
+                for (let i = 0; i < numGaussians; i++) {
+                    const amp = Math.random() * 1.5 + 0.5;
+                    const mu = Math.random() * 10;
+                    const sigma = Math.random() * 2 + 1;
+                    appState.gaussians.push({ amp, mu, sigma });
+                }
+                appState.func = (x) => appState.gaussians.reduce((sum, g) => sum + gaussian(x, g.amp, g.mu, g.sigma), 0);
+                
+                for (let x = appState.xMin; x <= appState.xMax; x += 0.01) {
+                    const y = appState.func(x);
+                    if (y > maxY) maxY = y;
+                }
+                appState.yMax = maxY * 1.2;
+
+                const realIntegral = appState.gaussians.reduce((sum, g) => {
+                    return sum + integralGaussian(appState.xMin, appState.xMax, g.amp, g.mu, g.sigma);
+                }, 0);
+                realResultEl.textContent = realIntegral.toFixed(5);
+                
+                integrateButton.disabled = false;
+                draw();
+            }
+
+            function integrate() {
+                if (appState.animationFrameId) cancelAnimationFrame(appState.animationFrameId);
+                draw();
+
+                const method = methodSelect.value;
+                const h = parseFloat(stepSizeInput.value);
+                if (isNaN(h) || h <= 0) {
+                    // Don't copy this for a real system; alerts aren't ideal
+                    alert('Please enter a valid, positive step size.');
+                    return;
+                }
+                
+                let numericalIntegral = 0;
+                const f = appState.func;
+                const a = appState.xMin;
+                const b = appState.xMax;
+                let n = Math.round((b - a) / h);
+                
+                if (method === 'simpson' && n % 2 !== 0) {
+                    n++;
+                }
+                const actualH = (b - a) / n;
+
+                switch (method) {
+                    case 'midpoint':
+                        for (let i = 0; i < n; i++) numericalIntegral += f(a + (i + 0.5) * actualH);
+                        numericalIntegral *= actualH;
+                        break;
+                    case 'trapezoid':
+                        numericalIntegral = (f(a) + f(b)) / 2.0;
+                        for (let i = 1; i < n; i++) numericalIntegral += f(a + i * actualH);
+                        numericalIntegral *= actualH;
+                        break;
+                    case 'simpson':
+                        numericalIntegral = f(a) + f(b);
+                        for (let i = 1; i < n; i += 2) numericalIntegral += 4 * f(a + i * actualH);
+                        for (let i = 2; i < n - 1; i += 2) numericalIntegral += 2 * f(a + i * actualH);
+                        numericalIntegral *= actualH / 3.0;
+                        break;
+                }
+
+                numericalResultEl.textContent = numericalIntegral.toFixed(5);
+                const realIntegral = parseFloat(realResultEl.textContent);
+                const error = Math.abs(realIntegral - numericalIntegral);
+                errorResultEl.textContent = error.toFixed(5);
+
+                visualizeIntegration(method, a, b, n, actualH);
+            }
+
+            function visualizeIntegration(method, a, b, n, h) {
+                let i = 0;
+                const colors = {
+                    midpoint: 'rgba(248, 113, 113, 0.5)', 
+                    trapezoid: 'rgba(74, 222, 128, 0.5)', 
+                    simpson: 'rgba(96, 165, 250, 0.5)' 
+                };
+                const color = colors[method];
+
+                // Defines a parabola passing through three points using Lagrange polynomials.
+                const lagrangeParabola = (x, x0, y0, x1, y1, x2, y2) => {
+                    // Check for collinear vertical points to avoid division by zero.
+                    if (Math.abs(x0 - x1) < 1e-9 || Math.abs(x0 - x2) < 1e-9 || Math.abs(x1 - x2) < 1e-9) {
+                        // Fallback to linear interpolation in this rare edge case.
+                        return x <= x1 ? y0 + (y1 - y0) * (x - x0) / (x1 - x0) : y1 + (y2 - y1) * (x - x1) / (x2 - x1);
+                    }
+                    const l0 = ((x - x1) * (x - x2)) / ((x0 - x1) * (x0 - x2));
+                    const l1 = ((x - x0) * (x - x2)) / ((x1 - x0) * (x1 - x2));
+                    const l2 = ((x - x0) * (x - x1)) / ((x2 - x0) * (x2 - x1));
+                    return y0 * l0 + y1 * l1 + y2 * l2;
+                };
+                
+                function animationStep() {
+                    if (i >= n) {
+                        appState.animationFrameId = null;
+                        return;
+                    }
+                    ctx.fillStyle = color;
+                    ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+                    ctx.lineWidth = 1;
+
+                    if (method === 'simpson') {
+                        const x0 = a + i * h;
+                        const x1 = a + (i + 1) * h;
+                        const x2 = a + (i + 2) * h;
+                        
+                        if (x2 > b + 1e-9) { 
+                            i = n; 
+                            appState.animationFrameId = requestAnimationFrame(animationStep);
+                            return;
+                        }
+
+                        const y0 = appState.func(x0);
+                        const y1 = appState.func(x1);
+                        const y2 = appState.func(x2);
+
+                        ctx.beginPath();
+                        ctx.moveTo(mapX(x0), mapY(0));
+                        ctx.lineTo(mapX(x0), mapY(y0));
+
+                        const plotStep = h / 20; 
+                        for (let plotX = x0 + plotStep; plotX <= x2; plotX += plotStep) {
+                            const plotY = lagrangeParabola(plotX, x0, y0, x1, y1, x2, y2);
+                            ctx.lineTo(mapX(plotX), mapY(plotY));
+                        }
+                        ctx.lineTo(mapX(x2), mapY(y2));
+
+                        ctx.lineTo(mapX(x2), mapY(0));
+                        ctx.closePath();
+                        ctx.fill();
+                        ctx.stroke();
+
+                        i += 2;
+                    } else {
+                        const x0 = a + i * h;
+                        const x1 = a + (i + 1) * h;
+                        ctx.beginPath();
+                        if (method === 'midpoint') {
+                            const midY = appState.func((x0 + x1) / 2);
+                            ctx.rect(mapX(x0), mapY(midY), mapX(x1) - mapX(x0), mapY(0) - mapY(midY));
+                        } else { 
+                            const y0 = appState.func(x0);
+                            const y1 = appState.func(x1);
+                            ctx.moveTo(mapX(x0), mapY(0));
+                            ctx.lineTo(mapX(x0), mapY(y0));
+                            ctx.lineTo(mapX(x1), mapY(y1));
+                            ctx.lineTo(mapX(x1), mapY(0));
+                            ctx.closePath();
+                        }
+                        ctx.fill();
+                        ctx.stroke();
+                        i++;
+                    }
+                    
+                    appState.animationFrameId = requestAnimationFrame(animationStep);
+                }
+                appState.animationFrameId = requestAnimationFrame(animationStep);
+            }
+
+            // Event Listeners
+            initButton.addEventListener('click', initializeFunction);
+            integrateButton.addEventListener('click', integrate);
+            window.addEventListener('resize', resizeCanvas);
+
+            // Initial setup
+            resizeCanvas();
+        });
+    </script>
+</body>
+</html>
