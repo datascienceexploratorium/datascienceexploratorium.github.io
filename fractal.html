@@ -1,0 +1,1423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fractal Explorer</title>
+    <!-- KaTeX for LaTeX rendering -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" xintegrity="sha384-n8MVd4RsNIU0tAv4ct0nTaAbDJwPJzDEaqSD1odI+WdtXRGWt2kTvGFasHpSy3SV" crossorigin="anonymous">
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js" xintegrity="sha384-XjKyOOlGwcjNTAIQHIpgOno0Hl1YQqzUOLALmuqehneUG+vnGctmUbKyIyuh" crossorigin="anonymous"></script>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&family=Fira+Code&display=swap" rel="stylesheet">
+<style>
+        /* Reset & Base Styles */
+        * { 
+            box-sizing: border-box; 
+            margin: 0; 
+            padding: 0; 
+        }
+        
+        body {
+            background: #111;
+            color: #dddddd;
+            font-family: Arial, Helvetica, sans-serif;
+            overflow: hidden;
+            height: 100vh;
+            position: relative;
+        }
+
+        /* Control Panel */
+        .control-panel {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 12px;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            z-index: 10;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+            max-height: calc(100vh - 40px);
+            overflow-y: auto;
+            width: 280px;
+        }
+        
+        .control-panel h1 {
+            font-size: 24px;
+            font-weight: bold;
+            color: #dddddd;
+            margin-bottom: 8px;
+            text-align: center;
+        }
+        
+        .control-panel h2 {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #9d9cde;
+        }
+        
+        .control-group {
+            margin-bottom: 12px;
+        }
+        
+        .control-group label {
+            display: block;
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 6px;
+            color: #dddddd;
+        }
+
+        /* Formula Input & Preview */
+        .formula-input-wrapper {
+            display: flex;
+            align-items: center;
+            background: rgba(255, 255, 255, 0.15);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 6px;
+            padding: 8px;
+        }
+        
+        #formula-prefix {
+            font-family: 'Fira Code', monospace;
+            color: #a5b4fc;
+            margin-right: 8px;
+        }
+        
+        #formula-input {
+            background: transparent;
+            width: 100%;
+            font-size: 16px;
+            color: #dddddd;
+            border: none;
+            outline: none;
+        }
+        
+        #formula-preview {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 12px;
+            border-radius: 6px;
+            min-height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            overflow-wrap: break-word;
+            word-wrap: break-word;
+            max-height: 100px;
+            overflow-y: auto;
+        }
+
+        /* Buttons */
+        .btn {
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-weight: 600;
+            transition: all 0.2s ease-in-out;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            cursor: pointer;
+            font-size: 16px;
+        }
+        
+        .btn-primary {
+            background: rgba(255, 255, 255, 0.15);
+            color: #dddddd;
+            width: 100%;
+            height: 36px;
+        }
+        
+        .btn-primary:hover,
+        .btn-primary:active {
+            background: rgba(255, 255, 255, 0.25);
+        }
+        
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.15);
+            color: #dddddd;
+        }
+        
+        .btn-secondary:hover,
+        .btn-secondary:active {
+            background: rgba(255, 255, 255, 0.25);
+        }
+
+        /* Fractal Buttons */
+        .fractal-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        
+        .fractal-btn {
+            width: 100%;
+            height: 36px;
+            text-align: center;
+            font-size: 14px;
+            transition: all 0.2s ease-in-out;
+            padding: 8px;
+        }
+        
+        .fractal-btn.active {
+            background: rgba(255, 255, 255, 0.25);
+            box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.5);
+        }
+
+        /* Inputs & Selects */
+        select, input[type=number] {
+            width: 100%;
+            background: rgba(255, 255, 255, 0.15);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 6px;
+            padding: 8px;
+            color: #dddddd;
+            font-size: 16px;
+        }
+        
+        select option {
+            background: #333;
+            color: #dddddd;
+        }
+        
+        .checkbox-label {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            font-size: 16px;
+            color: #dddddd;
+        }
+        
+        .checkbox-label input {
+            margin-right: 8px;
+            transform: scale(1.2);
+        }
+
+        /* Slider Styles */
+        .slider-group {
+            margin-bottom: 12px;
+        }
+        
+        .slider-group label {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 16px;
+            margin-bottom: 6px;
+            color: #dddddd;
+        }
+        
+        .slider {
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: rgba(255, 255, 255, 0.2);
+            outline: none;
+            -webkit-appearance: none;
+            cursor: pointer;
+        }
+        
+        .slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #2196F3;
+            cursor: pointer;
+            border: none;
+        }
+        
+        .slider::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #2196F3;
+            cursor: pointer;
+            border: none;
+        }
+
+        .checkbox {
+            accent-color: #2196F3;
+        }
+        
+        /* Canvas Area */
+        .canvas-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #111;
+        }
+        
+        #fractal-canvas {
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+            cursor: grab;
+            width: 100%;
+            height: 100%;
+        }
+        
+        #fractal-canvas:active {
+            cursor: grabbing;
+        }
+        
+        #loading-indicator {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(10px);
+            color: white;
+            padding: 16px 24px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            font-size: 18px;
+            z-index: 20;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+        }
+        
+        .spinner {
+            animation: spin 1s linear infinite;
+            margin-right: 12px;
+            height: 20px;
+            width: 20px;
+        }
+        
+        @keyframes spin { 
+            from { transform: rotate(0deg); } 
+            to { transform: rotate(360deg); } 
+        }
+
+        /* Mobile Responsiveness */
+        @media (max-width: 768px) {
+            .control-panel {
+                width: calc(100vw - 40px);
+                max-width: 320px;
+                max-height: 60vh;
+            }
+            
+            .control-panel h1 {
+                font-size: 20px;
+            }
+            
+            .control-panel h2 {
+                font-size: 16px;
+            }
+            
+            .fractal-buttons {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+
+    <!-- <style>
+        /* Base Styles & Layout */
+        body {
+            font-family: 'Inter', sans-serif;
+            overscroll-behavior: none;
+            background-color: #111827;
+            color: #d1d5db;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+            margin: 0;
+            padding: 0;
+        }
+        @media (max-width: 768px) {
+            body {
+                flex-direction: column;
+            }
+        }
+
+        /* Control Panel */
+        .control-panel {
+            width: 24rem;
+            padding: 1.5rem;
+            background-color: #1a1a1e;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+            overflow-y: auto;
+            flex-shrink: 0;
+        }
+        .control-panel h1 {
+            font-size: 1.875rem;
+            font-weight: 700;
+            color: white;
+            margin-bottom: 1.5rem;
+            border-bottom: 1px solid #374151;
+            padding-bottom: 1rem;
+        }
+        .control-panel h2 {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+        }
+        .control-group {
+            margin-bottom: 1.5rem;
+        }
+        .control-group label {
+            display: block;
+            font-size: 1.125rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+
+        /* Formula Input & Preview */
+        .formula-input-wrapper {
+            display: flex;
+            align-items: center;
+            background-color: #1f2937;
+            border: 1px solid #4b5563;
+            border-radius: 0.5rem;
+            padding: 0.5rem;
+        }
+        #formula-prefix {
+            font-family: 'Fira Code', monospace;
+            color: #a5b4fc;
+            margin-right: 0.5rem;
+        }
+        #formula-input {
+            background: transparent;
+            width: 100%;
+            font-size: 1.125rem;
+            color: #f3f4f6;
+            border: none;
+            outline: none;
+        }
+        #formula-preview {
+            background-color: #1f2937;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            min-height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            border: 1px solid #4b5563;
+            overflow-wrap: break-word;
+            word-wrap: break-word;
+            hyphens: auto;
+            max-height: 120px;
+            overflow-y: auto;
+        }
+        .katex-display { 
+            margin: 0.5em 0; 
+            max-width: 100%;
+            overflow-x: auto;
+        }
+
+        /* Buttons & Selects */
+        .btn {
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            font-weight: 600;
+            transition: all 0.2s ease-in-out;
+            border: none;
+            cursor: pointer;
+        }
+        .btn-primary {
+            background-color: #4f46e5;
+            color: white;
+            width: 100%;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -2px rgba(0,0,0,0.1);
+        }
+        .btn-primary:hover { background-color: #4338ca; }
+        .btn-secondary {
+            background-color: #4b5563;
+            color: white;
+        }
+        .btn-secondary:hover { background-color: #374151; }
+        /* Fractal Buttons */
+        .fractal-buttons {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 0.75rem;
+        }
+        .fractal-btn {
+            padding: 0.75rem 0.5rem;
+            text-align: center;
+            font-size: 0.9rem;
+            transition: all 0.2s ease-in-out;
+        }
+        .fractal-btn.active {
+            background-color: #4f46e5;
+            color: white;
+            box-shadow: 0 0 0 2px #6366f1;
+        }
+        select, input[type=number] {
+            width: 100%;
+            background-color: #1f2937;
+            border: 1px solid #4b5563;
+            border-radius: 0.5rem;
+            padding: 0.5rem;
+            color: #f3f4f6;
+        }
+        .checkbox-label {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            font-size: 1rem;
+        }
+        .checkbox-label input {
+            margin-right: 0.5rem;
+        }
+
+        /* Slider Styles */
+        .slider-group {
+            margin-bottom: 1rem;
+        }
+        .slider-group label {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 1rem;
+            margin-bottom: 0.5rem;
+        }
+        .slider {
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background-color: #4b5563;
+            outline: none;
+            -webkit-appearance: none;
+        }
+        .slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #4f46e5;
+            cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+        .slider::-moz-range-thumb {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #4f46e5;
+            cursor: pointer;
+            border: none;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        /* Canvas Area */
+        .canvas-container {
+            flex-grow: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-color: #111113;
+            position: relative;
+        }
+        #fractal-canvas {
+            cursor: grab;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        #fractal-canvas:active {
+            cursor: grabbing;
+        }
+        #loading-indicator {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 1rem 1.5rem;
+            border-radius: 0.5rem;
+            display: flex;
+            align-items: center;
+            font-size: 1.25rem;
+            z-index: 10;
+        }
+        .spinner {
+            animation: spin 1s linear infinite;
+            margin-right: 0.75rem;
+            height: 1.5rem;
+            width: 1.5rem;
+        }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    </style> -->
+</head>
+<body>
+
+    <!-- Control Panel (Left Side) -->
+    <div class="control-panel">
+        <h1>Fractal Explorer</h1>
+
+        <div class="control-group">
+            <br>
+            <h2>Fractal Selection</h2>
+            <br>
+            <div class="fractal-buttons">
+                <button class="fractal-btn btn btn-secondary" data-formula="Z.pow(2).add(C)" data-view='{"x": -0.75, "y": 0, "scale": 3.5}'>Classic Mandelbrot</button>
+                <button class="fractal-btn btn btn-secondary" data-formula="julia" data-view='{"x": 0, "y": 0, "scale": 2}' data-constant='{"real": -0.7269, "imag": 0.1889}'>Julia Set</button>
+                <button class="fractal-btn btn btn-secondary" data-formula="Z.pow(3).add(C)" data-view='{"x": -0.5, "y": 0, "scale": 3}'>Cubic Mandelbrot</button>
+                <button class="fractal-btn btn btn-secondary" data-formula="Z.pow(4).add(C)" data-view='{"x": -0.5, "y": 0, "scale": 2.5}'>Quartic Mandelbrot</button>
+                <button class="fractal-btn btn btn-secondary" data-formula="(new Complex(Math.abs(Z.real), Math.abs(Z.imag))).pow(2).add(C)" data-view='{"x": -1.8, "y": -0.1, "scale": 2.5}'>Burning Ship</button>
+                <button class="fractal-btn btn btn-secondary" data-formula="Z.sin().add(C)" data-view='{"x": 0, "y": 0, "scale": 6}'>Sine Fractal</button>
+                <button class="fractal-btn btn btn-secondary" data-formula="julia" data-view='{"x": 0, "y": 0, "scale": 2}' data-constant='{"real": -0.4, "imag": 0.6}'>Julia Set 2</button>
+                <button class="fractal-btn btn btn-secondary" data-formula="phoenix" data-view='{"x": 0, "y": 0, "scale": 3}'>Phoenix Fractal</button>
+            </div>
+        </div>
+
+        <div class="control-group" style="display: none;">
+            <label for="formula-input">Formula</label>
+            <div class="formula-input-wrapper">
+                <span id="formula-prefix"></span>
+                <input type="text" id="formula-input" placeholder="Z^2 + C  or  Z.pow(2).add(C)">
+            </div>
+        </div>
+
+        <div class="control-group" style="display: none;">
+            <label>Preview</label>
+            <div id="formula-preview"></div>
+        </div>
+
+        <button id="render-btn" class="btn btn-primary" style="display: none;">Render</button>
+
+        <div class="control-group">
+            <br>
+            <h2>View Controls</h2>
+            <br>
+            <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem;">
+                <button id="save-image-btn" class="btn btn-secondary" style="width:100%;">Save Image</button>
+            </div>
+            <label for="max-iterations-input">Max Iterations</label>
+            <input type="number" id="max-iterations-input" value="256" min="50" style="margin-bottom: 1rem;">
+            <label class="checkbox-label">
+                <input type="checkbox" id="hi-res-checkbox">
+                High Resolution
+            </label>
+        </div>
+
+        <div class="control-group">
+            <br>
+            <h2>Coloring</h2>
+            <br>
+            <label for="color-palette-select">Color Palette</label>
+            <select id="color-palette-select">
+                <option value="spectral">Spectral</option>
+                <option value="hot">Hot</option>
+                <option value="cool">Cool</option>
+                <option value="fire_ice">Fire & Ice</option>
+                <option value="nebula">Nebula</option>
+                <option value="toxic">Toxic</option>
+                <option value="grayscale">Grayscale</option>
+            </select>
+            <br><br>
+            
+            <div class="slider-group">
+                <label>
+                    Hue Shift
+                    <span id="hue-value">0°</span>
+                </label>
+                <input type="range" id="hue-slider" class="slider" min="0" max="360" value="0">
+            </div>
+            
+            <div class="slider-group">
+                <label>
+                    Saturation
+                    <span id="saturation-value">100%</span>
+                </label>
+                <input type="range" id="saturation-slider" class="slider" min="0" max="100" value="100">
+            </div>
+            
+            <div class="slider-group">
+                <label>
+                    Color Map Repeat
+                    <span id="repeat-value">1x</span>
+                </label>
+                <input type="range" id="repeat-slider" class="slider" min="1" max="10" value="1">
+            </div>
+        </div>
+
+        <div style="display: none;">
+            <h2>Examples</h2>
+            <div class="example-buttons">
+                <button class="example-btn btn btn-secondary" data-formula="Z^2 + C">Mandelbrot</button>
+                <button class="example-btn btn btn-secondary" data-formula="Z^2 + (-0.7269 + 0.1889i)">Julia Set</button>
+                <button class="example-btn btn btn-secondary" data-formula="Z^3 + C">Mandelbrot³</button>
+                <button class="example-btn btn btn-secondary" data-formula="Z^5 + C">Mandelbrot⁵</button>
+                <button class="example-btn btn btn-secondary" data-formula="(|Re(Z)| + i|Im(Z)|)^2 + C">Burning Ship</button>
+                <button class="example-btn btn btn-secondary" data-formula="sin(Z) + C">Sine Wave</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Canvas (Right Side) -->
+    <div class="canvas-container">
+        <canvas id="fractal-canvas"></canvas>
+        <div id="loading-indicator" style="display: none;">
+            <svg class="spinner" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle style="opacity: 0.25;" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path style="opacity: 0.75;" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            Rendering...
+        </div>
+    </div>
+
+    <!-- This script tag contains the code for the Web Worker -->
+    <script id="worker" type="javascript/worker">
+        // Web Worker Code ---
+        class Complex {
+            constructor(real, imag) { 
+                this.real = real || 0; 
+                this.imag = imag || 0; 
+            }
+            add(c) { 
+                if (typeof c === 'number') c = new Complex(c, 0);
+                return new Complex(this.real + c.real, this.imag + c.imag); 
+            }
+            sub(c) { 
+                if (typeof c === 'number') c = new Complex(c, 0);
+                return new Complex(this.real - c.real, this.imag - c.imag); 
+            }
+            mul(c) { 
+                if (typeof c === 'number') c = new Complex(c, 0);
+                return new Complex(this.real * c.real - this.imag * c.imag, this.real * c.imag + this.imag * c.real); 
+            }
+            div(c) { 
+                if (typeof c === 'number') c = new Complex(c, 0);
+                const denom = c.real * c.real + c.imag * c.imag;
+                if (denom === 0) return new Complex(Infinity, Infinity);
+                return new Complex((this.real * c.real + this.imag * c.imag) / denom, (this.imag * c.real - this.real * c.imag) / denom);
+            }
+            pow(n) { 
+                if (n === 0) return new Complex(1, 0);
+                if (n === 1) return new Complex(this.real, this.imag);
+                let r = new Complex(this.real, this.imag);
+                for (let i = 1; i < Math.abs(n); i++) { 
+                    r = r.mul(this); 
+                } 
+                return n > 0 ? r : new Complex(1, 0).div(r);
+            }
+            sin() { 
+                const sinh_imag = (Math.exp(this.imag) - Math.exp(-this.imag)) / 2;
+                const cosh_imag = (Math.exp(this.imag) + Math.exp(-this.imag)) / 2;
+                return new Complex(Math.sin(this.real) * cosh_imag, Math.cos(this.real) * sinh_imag); 
+            }
+            cos() {
+                const sinh_imag = (Math.exp(this.imag) - Math.exp(-this.imag)) / 2;
+                const cosh_imag = (Math.exp(this.imag) + Math.exp(-this.imag)) / 2;
+                return new Complex(Math.cos(this.real) * cosh_imag, -Math.sin(this.real) * sinh_imag);
+            }
+            exp() {
+                const exp_real = Math.exp(this.real);
+                return new Complex(exp_real * Math.cos(this.imag), exp_real * Math.sin(this.imag));
+            }
+            magnitudeSq() { return this.real * this.real + this.imag * this.imag; }
+        }
+
+        self.onmessage = function(e) {
+            const { row_start, row_count, width, height, formulaStr, maxIter, x_min, x_max, y_min, y_max, renderId, juliaConstant } = e.data;
+            let compiledFunction;
+
+            try {
+                if (formulaStr === 'phoenix') {
+                    // Phoenix fractal uses a special algorithm
+                    compiledFunction = null;
+                } else if (formulaStr === 'julia') {
+                    // Julia set uses a special algorithm
+                    compiledFunction = null;
+                } else {
+                    compiledFunction = new Function('Z', 'C', `return ${formulaStr}`);
+                }
+            } catch (err) { 
+                console.error("Worker compilation error:", err); 
+                self.postMessage({ error: err.message, renderId });
+                return; 
+            }
+
+            const iterations = new Uint32Array(width * row_count);
+            let count = 0;
+
+            for (let j = row_start; j < row_start + row_count; j++) {
+                const y = y_max - j * (y_max - y_min) / (height - 1);
+                for (let i = 0; i < width; i++) {
+                    const x = x_min + i * (x_max - x_min) / (width - 1);
+                    let Z, C;
+                    let Z_prev = new Complex(0, 0);
+                    let iter = 0;
+                    
+                    if (formulaStr === 'julia') {
+                        // Julia set: Z starts as the coordinate, C is the constant
+                        Z = new Complex(x, y);
+                        C = new Complex(juliaConstant.real, juliaConstant.imag);
+                        while (Z.magnitudeSq() < 4 && iter < maxIter) {
+                            try {
+                                Z = Z.pow(2).add(C);
+                                if (!Z || isNaN(Z.real) || isNaN(Z.imag)) break;
+                            } catch (e) {
+                                break;
+                            }
+                            iter++;
+                        }
+                    } else if (formulaStr === 'phoenix') {
+                        // Phoenix fractal: Z_n+1 = Z_n^2 + c + p*Z_{n-1}
+                        C = new Complex(x, y);
+                        Z = new Complex(0, 0);
+                        const p = 0.5667; // Phoenix parameter
+                        while (Z.magnitudeSq() < 4 && iter < maxIter) {
+                            try {
+                                const Z_next = Z.pow(2).add(C).add(new Complex(p, 0).mul(Z_prev));
+                                Z_prev = new Complex(Z.real, Z.imag);
+                                Z = Z_next;
+                                if (!Z || isNaN(Z.real) || isNaN(Z.imag)) break;
+                            } catch (e) {
+                                break;
+                            }
+                            iter++;
+                        }
+                    } else {
+                        // Standard iteration (Mandelbrot-type)
+                        C = new Complex(x, y);
+                        Z = new Complex(0, 0);
+                        while (Z.magnitudeSq() < 4 && iter < maxIter) {
+                            try {
+                                Z = compiledFunction(Z, C);
+                                if (!Z || isNaN(Z.real) || isNaN(Z.imag)) break;
+                            } catch (e) {
+                                break;
+                            }
+                            iter++;
+                        }
+                    }
+                    iterations[count++] = iter;
+                }
+            }
+            
+            self.postMessage({ iterations, row_start, row_count, renderId }, [iterations.buffer]);
+        };
+    </script>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const canvas = document.getElementById('fractal-canvas');
+            const ctx = canvas.getContext('2d');
+            
+            const formulaInput = document.getElementById('formula-input');
+            const formulaPrefix = document.getElementById('formula-prefix');
+            const formulaPreview = document.getElementById('formula-preview');
+            const renderBtn = document.getElementById('render-btn');
+            const saveImageBtn = document.getElementById('save-image-btn');
+            const maxIterationsInput = document.getElementById('max-iterations-input');
+            const hiResCheckbox = document.getElementById('hi-res-checkbox');
+            const colorPaletteSelect = document.getElementById('color-palette-select');
+            const loadingIndicator = document.getElementById('loading-indicator');
+            const fractalBtns = document.querySelectorAll('.fractal-btn');
+            let activeFractalBtn = null;
+            
+            // Color control elements
+            const hueSlider = document.getElementById('hue-slider');
+            const saturationSlider = document.getElementById('saturation-slider');
+            const repeatSlider = document.getElementById('repeat-slider');
+            const hueValue = document.getElementById('hue-value');
+            const saturationValue = document.getElementById('saturation-value');
+            const repeatValue = document.getElementById('repeat-value');
+
+            let currentFormula = '';
+            let palette = [];
+            let paletteData = [];
+
+            let view = { x: -0.75, y: 0, scale: 3.5 };
+            let drag = { x: 0, y: 0, active: false };
+            let lastRenderedImage = null;
+            let baseRenderedImage = null; // Store the original rendered image
+            let currentZoomFactor = 1; // Track cumulative zoom since last render
+            let currentZoomCenter = { x: 0, y: 0 }; // Track zoom center
+            let debouncedRender;
+
+            const NUM_WORKERS = navigator.hardwareConcurrency || 4;
+            const workers = [];
+            for (let i = 0; i < NUM_WORKERS; i++) {
+                const workerBlob = new Blob([document.getElementById('worker').textContent], { type: 'application/javascript' });
+                workers.push(new Worker(URL.createObjectURL(workerBlob)));
+            }
+            let workers_busy = 0;
+            let current_iterations_data;
+            let render_id = 0;
+            let current_render_id = 0;
+
+            function onWorkerMessage(e) {
+                const { iterations, row_start, renderId, error } = e.data;
+                
+                // Ignore messages from old renders
+                if (renderId && renderId !== current_render_id) {
+                    return;
+                }
+
+                if (error) {
+                    console.error("Worker error:", error);
+                    workers_busy--;
+                    if (workers_busy === 0) {
+                        loadingIndicator.style.display = 'none';
+                    }
+                    return;
+                }
+                
+                current_iterations_data.set(iterations, row_start * (hiResCheckbox.checked ? canvas.width * 4 : canvas.width));
+
+                workers_busy--;
+                if (workers_busy === 0) {
+                    drawFractalFromIterations();
+                }
+            }
+            workers.forEach(w => w.onmessage = onWorkerMessage);
+
+            function hslToRgb(h, s, l) {
+                h /= 360;
+                s /= 100;
+                l /= 100;
+                const a = s * Math.min(l, 1 - l);
+                const f = n => {
+                    const k = (n + h * 12) % 12;
+                    return l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
+                };
+                return [Math.round(f(0) * 255), Math.round(f(8) * 255), Math.round(f(4) * 255)];
+            }
+
+            function rgbToHsl(r, g, b) {
+                r /= 255;
+                g /= 255;
+                b /= 255;
+                const max = Math.max(r, g, b);
+                const min = Math.min(r, g, b);
+                let h, s, l = (max + min) / 2;
+
+                if (max === min) {
+                    h = s = 0; // achromatic
+                } else {
+                    const d = max - min;
+                    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+                    switch (max) {
+                        case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+                        case g: h = (b - r) / d + 2; break;
+                        case b: h = (r - g) / d + 4; break;
+                    }
+                    h /= 6;
+                }
+                return [h * 360, s * 100, l * 100];
+            }
+
+            function applyColorEffects(color) {
+                const hueShift = parseInt(hueSlider.value, 10);
+                const saturation = parseInt(saturationSlider.value, 10);
+                
+                const [h, s, l] = rgbToHsl(color[0], color[1], color[2]);
+                const newH = (h + hueShift) % 360;
+                const newS = Math.max(0, Math.min(100, s * (saturation / 100)));
+                
+                return hslToRgb(newH, newS, l);
+            }
+
+            function generatePalettes() {
+                const palettes = { spectral: [], hot: [], cool: [], fire_ice: [], nebula: [], toxic: [], grayscale: [] };
+                for (let i = 0; i < 256; i++) {
+                    const t = i / 255;
+                    palettes.spectral.push([Math.round(9*(1-t)*t*t*t*255), Math.round(15*(1-t)*(1-t)*t*t*255), Math.round(8.5*(1-t)*(1-t)*(1-t)*t*255)]);
+                    palettes.hot.push([Math.min(255, t*3*255), Math.max(0, (t*3-1)*255), Math.max(0, (t*3-2)*255)]);
+                    palettes.cool.push([Math.round(t*255), Math.round((1-t)*255), 255]);
+                    palettes.fire_ice.push([Math.round(255 * Math.sqrt(t)), Math.round(255 * t*t), Math.round(255 * Math.sin(t * Math.PI))]);
+                    palettes.nebula.push([Math.round(255 * Math.sin(t * Math.PI * 2 + 0)), Math.round(255 * Math.sin(t * Math.PI * 2 + 2)), Math.round(255 * Math.sin(t * Math.PI * 2 + 4))]);
+                    palettes.toxic.push([Math.round(255 * t), Math.round(255 * (1-t)), 0]);
+                    palettes.grayscale.push([i, i, i]);
+                }
+                paletteData = palettes;
+                setPalette();
+            }
+
+            function setPalette() {
+                const basePalette = paletteData[colorPaletteSelect.value];
+                const repeatFactor = parseInt(repeatSlider.value, 10);
+                palette = [];
+                
+                for (let i = 0; i < 256; i++) {
+                    const baseIndex = Math.floor((i * repeatFactor) % basePalette.length);
+                    const baseColor = basePalette[baseIndex];
+                    palette.push(applyColorEffects(baseColor));
+                }
+            }
+            
+            function resizeCanvas() {
+                const container = canvas.parentElement;
+                const rect = container.getBoundingClientRect();
+                canvas.width = rect.width;
+                canvas.height = rect.height;
+                
+                if (canvas.width <= 0 || canvas.height <= 0) return;
+                
+                if(currentFormula) {
+                    requestDrawFractal();
+                }
+            }
+
+            function parseFormula(input) {
+                // Convert common mathematical expressions to JavaScript Complex class syntax
+                let formula = input.trim();
+                
+                // Handle complex number notation: a + bi or a + ib
+                formula = formula.replace(/(-?\d+\.?\d*)\s*\+\s*(-?\d+\.?\d*)i/g, 'new Complex($1, $2)');
+                formula = formula.replace(/(-?\d+\.?\d*)\s*-\s*(-?\d+\.?\d*)i/g, 'new Complex($1, -$2)');
+                formula = formula.replace(/(-?\d+\.?\d*)i/g, 'new Complex(0, $1)');
+                
+                // Handle absolute value notation
+                formula = formula.replace(/\|Re\(Z\)\|/g, 'Math.abs(Z.real)');
+                formula = formula.replace(/\|Im\(Z\)\|/g, 'Math.abs(Z.imag)');
+                formula = formula.replace(/\|([^|]+)\|/g, 'Math.abs($1)');
+                
+                // Convert power notation (both ^ and **)
+                formula = formula.replace(/([ZC]|\([^)]+\))\^(\d+)/g, '$1.pow($2)');
+                formula = formula.replace(/([ZC]|\([^)]+\))\*\*(\d+)/g, '$1.pow($2)');
+                
+                // Convert trigonometric functions
+                formula = formula.replace(/sin\s*\(([ZC])\)/g, '$1.sin()');
+                formula = formula.replace(/cos\s*\(([ZC])\)/g, '$1.cos()');
+                formula = formula.replace(/exp\s*\(([ZC])\)/g, '$1.exp()');
+                
+                // Convert basic operations to method calls, but be careful with order
+                // Handle addition and subtraction
+                formula = formula.replace(/([ZC](?:\.[a-zA-Z]+\(\))*)\s*\+\s*((?:new Complex\([^)]+\)|[ZC]|-?\d+\.?\d*))/g, '$1.add($2)');
+                formula = formula.replace(/([ZC](?:\.[a-zA-Z]+\(\))*)\s*-\s*((?:new Complex\([^)]+\)|[ZC]|-?\d+\.?\d*))/g, '$1.sub($2)');
+                
+                // Handle multiplication (explicit * or implicit)
+                formula = formula.replace(/([ZC](?:\.[a-zA-Z]+\(\))*)\s*\*\s*((?:new Complex\([^)]+\)|[ZC]|-?\d+\.?\d*))/g, '$1.mul($2)');
+                formula = formula.replace(/(\d+)\s*([ZC])/g, 'new Complex($1, 0).mul($2)');
+                
+                // Handle division
+                formula = formula.replace(/([ZC](?:\.[a-zA-Z]+\(\))*)\s*\/\s*((?:new Complex\([^)]+\)|[ZC]|-?\d+\.?\d*))/g, '$1.div($2)');
+                
+                // Convert standalone numbers to Complex numbers
+                formula = formula.replace(/(?<!new Complex\(|,\s*)(?<!Math\.abs\()(-?\d+\.?\d*)(?!\s*[,)])/g, 'new Complex($1, 0)');
+                
+                return formula;
+            }
+            
+            function updatePreview() {
+                if (window.katex) {
+                    const formulaStr = formulaInput.value;
+                    try {
+                        // Try to parse and create a cleaner LaTeX representation
+                        let latexStr = formulaStr
+                            // Handle JavaScript Complex class syntax
+                            .replace(/Z\.pow\((\d+)\)/g, 'Z^{$1}')
+                            .replace(/C\.pow\((\d+)\)/g, 'C^{$1}')
+                            .replace(/\.pow\((\d+)\)/g, '^{$1}')
+                            .replace(/\.add\(/g, ' + ')
+                            .replace(/\.sub\(/g, ' - ')
+                            .replace(/\.mul\(/g, ' \\cdot ')
+                            .replace(/\.div\(/g, ' / ')
+                            .replace(/\.sin\(\)/g, '\\sin')
+                            .replace(/\.cos\(\)/g, '\\cos')
+                            .replace(/\.exp\(\)/g, '\\exp')
+                            // Handle basic math notation
+                            .replace(/\*\*/g, '^')
+                            .replace(/\*/g, ' \\cdot ')
+                            .replace(/\+/g, ' + ')
+                            .replace(/-/g, ' - ')
+                            .replace(/\//g, ' / ')
+                            // Convert variables
+                            .replace(/(?<!\w)Z(?!\w)/g, 'Z_n')
+                            .replace(/(?<!\w)C(?!\w)/g, 'c')
+                            // Clean up extra parentheses and spaces
+                            .replace(/\)+$/g, '')
+                            .replace(/\s+/g, ' ')
+                            .trim();
+                            
+                        // Handle power notation that might have been missed
+                        latexStr = latexStr.replace(/([ZCzc_n]+)\^(\d+)/g, '$1^{$2}');
+                        
+                        katex.render(`Z_{n+1} = ${latexStr}`, formulaPreview, { displayMode: true, throwOnError: false });
+                    } catch (e) {
+                        formulaPreview.innerHTML = `<span style="color: #f87171;">Preview Error</span>`;
+                    }
+                }
+            }
+            
+            function selectFractal(formula, viewData, buttonElement) {
+                // Remove active class from all buttons
+                fractalBtns.forEach(btn => btn.classList.remove('active'));
+                
+                // Add active class to clicked button
+                if (buttonElement) {
+                    buttonElement.classList.add('active');
+                    activeFractalBtn = buttonElement;
+                }
+                
+                // Handle special fractal types
+                if (formula === 'julia') {
+                    currentFormula = 'julia';
+                } else if (formula === 'phoenix') {
+                    currentFormula = 'phoenix';
+                } else {
+                    currentFormula = formula;
+                }
+                
+                // Set the view
+                view = { ...viewData };
+                
+                // Update the formula input (if visible)
+                formulaInput.value = currentFormula;
+                updatePreview();
+                
+                // Render the fractal
+                requestDrawFractal();
+            }
+            
+            function requestDrawFractal() {
+                if (!currentFormula) return;
+                loadingIndicator.style.display = 'flex';
+                render_id++;
+                current_render_id = render_id;
+                
+                // Changed: Use 4x resolution when hi-res is checked
+                const scale = hiResCheckbox.checked ? 4 : 1;
+                const renderWidth = Math.floor(canvas.width * scale);
+                const renderHeight = Math.floor(canvas.height * scale);
+                
+                current_iterations_data = new Uint32Array(renderWidth * renderHeight);
+                workers_busy = NUM_WORKERS;
+
+                const rowsPerWorker = Math.ceil(renderHeight / NUM_WORKERS);
+                
+                const ratio = renderHeight / renderWidth;
+                const x_range = view.scale;
+                const y_range = view.scale * ratio;
+
+                // Get Julia constant if this is a Julia set
+                let juliaConstant = null;
+                if (activeFractalBtn && activeFractalBtn.dataset.constant) {
+                    juliaConstant = JSON.parse(activeFractalBtn.dataset.constant);
+                }
+
+                for (let i = 0; i < NUM_WORKERS; i++) {
+                    const row_start = i * rowsPerWorker;
+                    const row_count = Math.min(rowsPerWorker, renderHeight - row_start);
+                    if (row_count <= 0) {
+                        workers_busy--;
+                        continue;
+                    }
+                    
+                    const workerData = {
+                        row_start, row_count, width: renderWidth, height: renderHeight,
+                        formulaStr: currentFormula, maxIter: maxIterationsInput.value,
+                        x_min: view.x - x_range / 2, x_max: view.x + x_range / 2,
+                        y_min: view.y - y_range / 2, y_max: view.y + y_range / 2,
+                        renderId: current_render_id
+                    };
+                    
+                    if (juliaConstant) {
+                        workerData.juliaConstant = juliaConstant;
+                    }
+                    
+                    workers[i].postMessage(workerData);
+                }
+            }
+
+            function drawFractalFromIterations() {
+                const width = hiResCheckbox.checked ? canvas.width * 4 : canvas.width;
+                const height = hiResCheckbox.checked ? canvas.height * 4 : canvas.height;
+                const maxIter = parseInt(maxIterationsInput.value, 10);
+                let minIter = maxIter, maxIterFound = 0;
+                for(let i = 0; i < current_iterations_data.length; i++) {
+                    const iter = current_iterations_data[i];
+                    if (iter < maxIter) {
+                        if (iter < minIter) minIter = iter;
+                        if (iter > maxIterFound) maxIterFound = iter;
+                    }
+                }
+
+                const imageData = new ImageData(width, height);
+                const iterRange = Math.max(1, maxIterFound - minIter);
+                
+                for (let i = 0; i < current_iterations_data.length; i++) {
+                    const iter = current_iterations_data[i];
+                    const pixelIndex = i * 4;
+                    let color;
+                    if (iter < maxIter) {
+                        const normalized = (iter - minIter) / iterRange;
+                        const colorIndex = Math.floor(normalized * (palette.length - 1));
+                        color = palette[colorIndex];
+                    } else {
+                        color = [0, 0, 0];
+                    }
+                    
+                    if (color) {
+                        imageData.data[pixelIndex] = color[0];
+                        imageData.data[pixelIndex + 1] = color[1];
+                        imageData.data[pixelIndex + 2] = color[2];
+                        imageData.data[pixelIndex + 3] = 255;
+                    }
+                }
+
+                createImageBitmap(imageData).then(bitmap => {
+                    lastRenderedImage = bitmap;
+                    baseRenderedImage = bitmap; // Store as base image
+                    currentZoomFactor = 1; // Reset zoom factor
+                    ctx.imageSmoothingEnabled = true;
+                    ctx.drawImage(lastRenderedImage, 0, 0, canvas.width, canvas.height);
+                    loadingIndicator.style.display = 'none';
+                });
+            }
+
+            function compileAndRender() {
+                const formulaStr = formulaInput.value;
+                if (!formulaStr) {
+                    alert("Please enter a formula.");
+                    return;
+                }
+                
+                // Try to parse flexible formula input
+                let processedFormula;
+                try {
+                    // First try to use the input as-is (for users who know JavaScript syntax)
+                    new Function('Z', 'C', `return ${formulaStr}`);
+                    processedFormula = formulaStr;
+                } catch (e) {
+                    // If that fails, try to parse it as a more natural mathematical expression
+                    try {
+                        processedFormula = parseFormula(formulaStr);
+                        new Function('Z', 'C', `return ${processedFormula}`);
+                    } catch (e2) {
+                        alert(`Formula error: ${e2.message}\n\nTry formats like:\n• Z^2 + C\n• Z.pow(2).add(C)\n• sin(Z) + C\n• Z**3 - C`);
+                        return;
+                    }
+                }
+                
+                currentFormula = processedFormula;
+                // Reset view and render
+                view = { x: -0.75, y: 0, scale: 3.5 };
+                requestDrawFractal();
+            }
+
+            function handleMouseDown(e) {
+                drag.x = e.clientX;
+                drag.y = e.clientY;
+                drag.active = true;
+            }
+
+            function handleMouseMove(e) {
+                if (!drag.active) return;
+                
+                const dx = e.clientX - drag.x;
+                const dy = e.clientY - drag.y;
+
+                ctx.fillStyle = '#111113';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                if (baseRenderedImage) {
+                    ctx.drawImage(baseRenderedImage, dx, dy, canvas.width, canvas.height);
+                }
+            }
+            
+            function handleMouseUp(e) {
+                if (!drag.active) return;
+                drag.active = false;
+
+                const dx = e.clientX - drag.x;
+                const dy = e.clientY - drag.y;
+
+                const ratio = canvas.height / canvas.width;
+                view.x -= dx / canvas.width * view.scale;
+                view.y += dy / canvas.height * view.scale * ratio;
+                
+                requestDrawFractal();
+            }
+
+            function handleWheel(e) {
+                e.preventDefault();
+                if (!baseRenderedImage) return;
+                
+                const scale = e.deltaY < 0 ? 0.99 : 1.01;
+                const rect = canvas.getBoundingClientRect();
+                const mouseX = e.clientX - rect.left;
+                const mouseY = e.clientY - rect.top;
+
+                const ratio = canvas.height / canvas.width;
+                const x_range = view.scale;
+                const y_range = view.scale * ratio;
+                
+                // Calculate mouse position in fractal coordinates
+                const mouse_real = (view.x - x_range / 2) + x_range * mouseX / canvas.width;
+                const mouse_imag = (view.y + y_range / 2) - y_range * mouseY / canvas.height;
+
+                // Update the actual view for when we eventually re-render
+                view.scale *= scale;
+                const new_x_range = view.scale;
+                const new_y_range = view.scale * ratio;
+                view.x = mouse_real - new_x_range * (mouseX / canvas.width - 0.5);
+                view.y = mouse_imag + new_y_range * (mouseY / canvas.height - 0.5);
+
+                // Update cumulative zoom factor
+                currentZoomFactor *= (1 / scale);
+                
+                // Store the first zoom center if this is the start of zooming
+                if (currentZoomFactor === (1 / scale)) {
+                    currentZoomCenter.x = mouseX;
+                    currentZoomCenter.y = mouseY;
+                }
+
+                // Live zoom update: scale the BASE image with cumulative factor
+                ctx.fillStyle = '#111113';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                // Calculate how to draw the scaled base image
+                const newWidth = canvas.width * currentZoomFactor;
+                const newHeight = canvas.height * currentZoomFactor;
+                const offsetX = (canvas.width - newWidth) / 2 + (currentZoomCenter.x - canvas.width / 2) * (1 - currentZoomFactor);
+                const offsetY = (canvas.height - newHeight) / 2 + (currentZoomCenter.y - canvas.height / 2) * (1 - currentZoomFactor);
+                
+                ctx.drawImage(baseRenderedImage, offsetX, offsetY, newWidth, newHeight);
+
+                // Debounced render for new high-quality image
+                debouncedRender();
+            }
+
+            function handleDoubleClick(e) {
+                e.preventDefault();
+                const rect = canvas.getBoundingClientRect();
+                const mouseX = e.clientX - rect.left;
+                const mouseY = e.clientY - rect.top;
+                
+                const ratio = canvas.height / canvas.width;
+                const x_range = view.scale;
+                const y_range = view.scale * ratio;
+
+                const mouse_real = (view.x - x_range / 2) + x_range * mouseX / canvas.width;
+                const mouse_imag = (view.y + y_range / 2) - y_range * mouseY / canvas.height;
+
+                view.x = mouse_real;
+                view.y = mouse_imag;
+                view.scale *= 0.5; // Zoom in by a fixed factor
+
+                requestDrawFractal();
+            }
+
+            function saveImage() {
+                if (!lastRenderedImage) {
+                    alert("No fractal to save. Please render a fractal first.");
+                    return;
+                }
+                
+                // Create a high-resolution canvas for saving
+                const saveScale = 2; // 2x the display resolution
+                const saveCanvas = document.createElement('canvas');
+                saveCanvas.width = canvas.width * saveScale;
+                saveCanvas.height = canvas.height * saveScale;
+                const saveCtx = saveCanvas.getContext('2d');
+                
+                // Draw the current image scaled up with smooth interpolation
+                saveCtx.imageSmoothingEnabled = true;
+                saveCtx.imageSmoothingQuality = 'high';
+                saveCtx.drawImage(lastRenderedImage, 0, 0, saveCanvas.width, saveCanvas.height);
+                
+                // Create download link
+                const link = document.createElement('a');
+                link.download = `fractal-${Date.now()}.png`;
+                link.href = saveCanvas.toDataURL('image/png');
+                
+                // Trigger download
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            }
+
+            function debounce(func, delay) {
+                let timeout;
+                return function(...args) {
+                    clearTimeout(timeout);
+                    timeout = setTimeout(() => func.apply(this, args), delay);
+                };
+            }
+
+            function updateSliderValues() {
+                hueValue.textContent = hueSlider.value + '°';
+                saturationValue.textContent = saturationSlider.value + '%';
+                repeatValue.textContent = repeatSlider.value + 'x';
+            }
+
+            // Event Listeners ---
+            saveImageBtn.addEventListener('click', saveImage);
+            
+            colorPaletteSelect.addEventListener('change', () => {
+                setPalette();
+                if(lastRenderedImage) drawFractalFromIterations();
+            });
+            
+            // Color control event listeners
+            hueSlider.addEventListener('input', () => {
+                updateSliderValues();
+                setPalette();
+                if(lastRenderedImage) drawFractalFromIterations();
+            });
+            
+            saturationSlider.addEventListener('input', () => {
+                updateSliderValues();
+                setPalette();
+                if(lastRenderedImage) drawFractalFromIterations();
+            });
+            
+            repeatSlider.addEventListener('input', () => {
+                updateSliderValues();
+                setPalette();
+                if(lastRenderedImage) drawFractalFromIterations();
+            });
+            
+            maxIterationsInput.addEventListener('change', requestDrawFractal);
+            hiResCheckbox.addEventListener('change', requestDrawFractal);
+
+            canvas.addEventListener('mousedown', handleMouseDown);
+            canvas.addEventListener('mousemove', handleMouseMove);
+            canvas.addEventListener('mouseup', handleMouseUp);
+            canvas.addEventListener('wheel', handleWheel);
+            canvas.addEventListener('dblclick', handleDoubleClick);
+            canvas.addEventListener('mouseleave', () => {
+                if (drag.active) {
+                    drag.active = false;
+                    requestDrawFractal();
+                }
+            });
+
+            fractalBtns.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const formula = btn.dataset.formula;
+                    const viewData = JSON.parse(btn.dataset.view);
+                    selectFractal(formula, viewData, btn);
+                });
+            });
+            
+            window.addEventListener('resize', resizeCanvas);
+
+            function init() {
+                debouncedRender = debounce(requestDrawFractal, 200);
+                generatePalettes();
+                updateSliderValues();
+                resizeCanvas();
+                
+                // Select the first fractal by default
+                if (fractalBtns.length > 0) {
+                    const firstBtn = fractalBtns[0];
+                    const formula = firstBtn.dataset.formula;
+                    const viewData = JSON.parse(firstBtn.dataset.view);
+                    selectFractal(formula, viewData, firstBtn);
+                }
+            }
+
+            setTimeout(init, 100);
+        });
+    </script>
+</body>
+</html>
