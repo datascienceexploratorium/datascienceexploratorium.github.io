@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DecTree</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #111;
+      overflow: hidden;
+      font-family: Arial, sans-serif;
+      display: flex; /* Use flexbox for main layout */
+      height: 100vh; /* Make body fill viewport height */
+    }
+
+    #controls {
+      flex-shrink: 0; /* Prevent controls from shrinking */
+      width: 280px; /* Fixed width for the control panel */
+      background: rgba(255,255,255,0.1);
+      backdrop-filter: blur(10px); /* Add blur effect */
+      border-radius: 12px;
+      padding: 15px;
+      color: #eee;
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+      gap: 15px; /* Spacing between control elements */
+      margin: 10px; /* Margin around the control panel */
+      box-shadow: 0 8px 32px rgba(0,0,0,0.4); /* Add shadow */
+    }
+
+    .control-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .control-group label {
+      font-size: 16px;
+      color: #ccc;
+    }
+
+    .control-group input[type="number"] {
+      width: 100px;
+      padding: 6px 10px;
+      border-radius: 6px;
+      border: 1px solid rgba(255,255,255,0.3);
+      background: rgba(0,0,0,0.2);
+      color: #eee;
+      font-size: 15px;
+    }
+
+    .button-group {
+      display: flex;
+      flex-wrap: wrap; /* Allow buttons to wrap */
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .button-group button {
+      flex: 1; /* Allow buttons to grow and shrink */
+      min-width: 120px; /* Minimum width for buttons */
+      background: #4D96FF;
+      border: none;
+      color: #fff;
+      padding: 10px 15px;
+      font-size: 15px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.2s ease;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+    }
+    .button-group button:hover { background: #6aabff; }
+    .button-group button:active { background: #3c7ce0; }
+    .button-group button:disabled {
+        background: #555;
+        cursor: not-allowed;
+        box-shadow: none;
+    }
+
+    #canvas-wrapper {
+      flex-grow: 1; /* Allow wrapper to take remaining space */
+      display: flex;
+      flex-direction: column;
+      gap: 10px; /* Spacing between canvases */
+      margin: 10px; /* Margin around the canvas wrapper */
+      position: relative;
+    }
+
+    canvas {
+      display: block;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-radius: 8px;
+      background: #222; /* Add a background to canvases */
+    }
+
+    #plotCanvas {
+      flex-grow: 0.5; /* Plot canvas takes up half the height of the wrapper */
+      height: 50%; /* Set explicit height for plotCanvas to ensure proper distribution */
+    }
+
+    #canvas {
+      flex-grow: 0.5; /* Simulation canvas takes up half the height of the wrapper */
+      height: 50%; /* Set explicit height for simulation canvas */
+    }
+
+    /* Adjust the top position of the plotCanvas to remove absolute positioning */
+    #plotCanvas, #canvas {
+        position: static !important;
+    }
+  </style>
+</head>
+<body>
+  <div id="controls">
+    <div class="control-group">
+      <label for="sigmaInput">Bandwidth (Sigma):</label>
+      <input id="sigmaInput" type="number" value="3" min="1" max="8" />
+    </div>
+
+    <div class="control-group">
+      <label for="distCount">Number of Distributions:</label>
+      <input id="distCount" type="number" value="2" min="1" max="4"/>
+    </div>
+
+    <div class="button-group">
+      <button id="genDistBtn">Generate Distributions</button>
+      <button id="estDensityBtn">Estimate Density</button>
+      <button id="resetBtn">Reset</button>
+    </div>
+  </div>
+
+  <div id="canvas-wrapper">
+    <canvas id="plotCanvas"></canvas>
+    <canvas id="canvas"></canvas>
+  </div>
+
+  <script>
+    const sigmaInput   = document.getElementById('sigmaInput');
+    const distCount    = document.getElementById('distCount');
+    const genDistBtn   = document.getElementById('genDistBtn');
+    const estDensityBtn= document.getElementById('estDensityBtn');
+    const resetBtn     = document.getElementById('resetBtn');
+    const plotCanvas   = document.getElementById('plotCanvas');
+    const plotCtx      = plotCanvas.getContext('2d');
+    const canvas       = document.getElementById('canvas');
+    const ctx          = canvas.getContext('2d');
+
+    const CELL_SIZE  = 3;
+    const BRUSH_SIZE = 5;
+    const BIN_CELL   = CELL_SIZE * BRUSH_SIZE;
+
+    let simCols, simRows, simGrid;
+    let plotCols, plotRows, plotGrid, ghostGrid;
+    let densityInterval = null;
+    let frozen = false;
+    let straightOnly = false;
+
+    function randNormal(mean = 0, std = 1) {
+      const u = Math.random() || 1e-9;
+      const v = Math.random() || 1e-9;
+      return Math.sqrt(-2 * Math.log(u))
+           * Math.cos(2 * Math.PI * v) * std + mean;
+    }
+
+    function initGrids() {
+      // Calculate available space for canvases after controls are rendered
+      const controlsWidth = document.getElementById('controls').offsetWidth + 20; // controls width + 2*margin
+      const width  = window.innerWidth - controlsWidth - 20; // Total width - controls width - 2*canvas-wrapper margin
+      const height = window.innerHeight - 20; // Total height - 2*canvas-wrapper margin
+
+      if (densityInterval) clearInterval(densityInterval);
+      genDistBtn.disabled = false;
+      estDensityBtn.disabled = false;
+      frozen = false;
+      straightOnly = false;
+
+      // plot canvas
+      plotCanvas.width  = width;
+      plotCanvas.height = Math.floor(height / 2); // Half of available height
+      plotCols = Math.floor(width / BIN_CELL);
+      plotRows = Math.floor(plotCanvas.height / BIN_CELL);
+      plotGrid = Array.from({ length: plotRows }, () => Array(plotCols).fill(false));
+      ghostGrid= [];
+
+      // simulation canvas
+      canvas.width  = width;
+      canvas.height = height - plotCanvas.height; // Remaining half of available height
+      simCols = Math.floor(width / CELL_SIZE);
+      simRows = Math.floor(canvas.height / CELL_SIZE);
+      simGrid = Array.from({ length: simRows }, () => Array(simCols).fill(null));
+    }
+
+    function columnHeight(col) {
+      let h = 0;
+      for (let r = 0; r < simRows; r++) if (simGrid[r][col]) h++;
+      return h;
+    }
+
+    function spawnBrushAtColumn(colCell) {
+      frozen = false;
+      for (let dr = 0; dr < BRUSH_SIZE; dr++) {
+        const r0 = dr;
+        for (let dc = -Math.floor(BRUSH_SIZE/2); dc <= Math.floor(BRUSH_SIZE/2); dc++) {
+          const c0 = colCell + dc;
+          if (c0<0 || c0>=simCols || simGrid[r0][c0]) continue;
+          simGrid[r0][c0] = {};
+        }
+      }
+    }
+
+    function updateSim() {
+      if (frozen) return;
+      const sigma = Number(sigmaInput.value)/5;
+      let moved = false;
+      for (let r = simRows-2; r>=0; r--) {
+        for (let c = 0; c < simCols; c++) {
+          const cell = simGrid[r][c];
+          if (!cell) continue;
+          const drift = straightOnly ? 0 : Math.round(randNormal(0, sigma));
+          const newC  = Math.min(simCols-1, Math.max(0, c + drift));
+          const belowR= r + 1;
+          if (!simGrid[belowR][newC]) {
+            simGrid[belowR][newC] = cell;
+            simGrid[r][c] = null;
+            moved = true;
+          } else if (!simGrid[belowR][c]) {
+            simGrid[belowR][c] = cell;
+            simGrid[r][c] = null;
+            moved = true;
+          }
+        }
+      }
+      if (!moved) frozen = true;
+    }
+
+    function drawSim() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#5F9EA0';
+      for (let r = 0; r < simRows; r++) {
+        for (let c = 0; c < simCols; c++) {
+          if (simGrid[r][c]) ctx.fillRect(c*CELL_SIZE, r*CELL_SIZE, CELL_SIZE, CELL_SIZE);
+        }
+      }
+    }
+
+    function drawPlot() {
+      plotCtx.clearRect(0, 0, plotCanvas.width, plotCanvas.height);
+      plotCtx.fillStyle = 'rgba(150,150,150,0.4)';
+      for (let r = 0; r < plotRows; r++) {
+        for (let c = 0; c < plotCols; c++) {
+          if (ghostGrid[r]?.[c]) {
+            plotCtx.fillRect(c*BIN_CELL, plotCanvas.height - (r+1)*BIN_CELL, BIN_CELL, BIN_CELL);
+          }
+        }
+      }
+      plotCtx.fillStyle = '#6A9955';
+      for (let r = 0; r < plotRows; r++) {
+        for (let c = 0; c < plotCols; c++) {
+          if (plotGrid[r][c]) {
+            plotCtx.fillRect(c*BIN_CELL, plotCanvas.height - (r+1)*BIN_CELL, BIN_CELL, BIN_CELL);
+          }
+        }
+      }
+    }
+
+    function loop() {
+      updateSim();
+      drawSim();
+      drawPlot();
+      requestAnimationFrame(loop);
+    }
+
+    genDistBtn.addEventListener('click', () => {
+      straightOnly = false;
+      if (densityInterval) clearInterval(densityInterval);
+      initGrids();
+      plotGrid = Array.from({ length: plotRows }, () => Array(plotCols).fill(false));
+      for (let d=0; d<Number(distCount.value); d++) {
+        const mu = 10 + Math.random()*30;
+        const sig= 2  + Math.random()*5;
+        const nS = 100 + Math.floor(Math.random()*101);
+        for (let i=0; i<nS; i++) {
+          let x = randNormal(mu, sig);
+          x = Math.max(0, Math.min(50, x));
+          const b = Math.floor((x/50)*plotCols);
+          for (let r=0; r<plotRows; r++) {
+            if (!plotGrid[r][b]) { plotGrid[r][b]=true; break; }
+          }
+        }
+      }
+      ghostGrid = plotGrid.map(row => row.slice());
+    });
+
+    estDensityBtn.addEventListener('click', () => {
+      straightOnly = false;
+      const cols = Array.from(new Set(
+        plotGrid.flatMap((row, ri) =>
+          row.map((v, ci) => v ? ci : -1)
+        ).filter(c => c>=0)
+      ));
+      if (!cols.length) return;
+      genDistBtn.disabled = estDensityBtn.disabled = true;
+      const topIdx = new Map();
+      cols.forEach(col => {
+        for (let r=plotRows-1; r>=0; r--) {
+          if (plotGrid[r][col]) { topIdx.set(col, r); break; }
+        }
+      });
+      densityInterval = setInterval(() => {
+        if (!cols.length) {
+          clearInterval(densityInterval);
+          genDistBtn.disabled = estDensityBtn.disabled = false;
+          setTimeout(() => { straightOnly = true; }, 1200);
+          return;
+        }
+        const idx = Math.floor(Math.random()*cols.length);
+        const col = cols[idx];
+        const r   = topIdx.get(col);
+        plotGrid[r][col] = false;
+        spawnBrushAtColumn(col*BRUSH_SIZE + Math.floor(BRUSH_SIZE/2));
+        let nt = -1;
+        for (let nr=r-1; nr>=0; nr--) {
+          if (plotGrid[nr][col]) { nt = nr; break; }
+        }
+        if (nt>=0) topIdx.set(col, nt);
+        else {
+          cols.splice(idx,1);
+          topIdx.delete(col);
+        }
+      }, 30);
+    });
+
+    resetBtn.addEventListener('click', () => {
+      if (densityInterval) clearInterval(densityInterval);
+      initGrids();
+    });
+    window.addEventListener('resize', initGrids);
+    window.addEventListener('load', () => { initGrids(); loop(); });
+  </script>
+</body>
+</html>

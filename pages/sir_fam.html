@@ -1,0 +1,1103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SIR Epidemic Simulation</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0 }
+        body {
+            background: #111;
+            color: #eee;
+            font-family: Arial,Helvetica,sans-serif;
+            overflow: hidden;
+        }
+        /* === UPDATED: fixed 20% (min 250px) left control panel === */
+        #controls {
+            position: fixed;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            width: 320px;
+            background: rgba(255,255,255,0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 0 12px 12px 0;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            z-index: 10;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+            overflow-y: auto;
+            overflow-x: hidden;
+        }
+        .stepper-slider {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            white-space: nowrap;
+        }
+        .ctrl-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .ctrl-buttons button {
+            width: 100%;
+            height: 36px;
+            font-size: 18px;
+            background: rgba(255,255,255,0.15);
+            border: 1px solid rgba(255,255,255,0.3);
+            border-radius: 6px;
+            color: #fff;
+            cursor: pointer;
+        }
+        .ctrl-buttons button:active { background: rgba(255,255,255,0.25) }
+        .ctrl-buttons button:disabled {
+            background: rgba(255,255,255,0.05);
+            color: rgba(255,255,255,0.3);
+            cursor: not-allowed;
+        }
+        .stepper-slider button {
+            width: 36px;
+            height: 36px;
+            font-size: 24px;
+            background: rgba(255,255,255,0.15);
+            border: 1px solid rgba(255,255,255,0.3);
+            border-radius: 6px;
+            color: #fff;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        .stepper-slider button:active { background: rgba(255,255,255,0.25) }
+        .stepper-slider input[type="range"] {
+            width: 180px;
+            height: 6px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 3px;
+            cursor: pointer;
+            -webkit-appearance: none;
+            appearance: none;
+            flex-shrink: 0;
+        }
+        .stepper-slider input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            background: #6BCB77;
+            border-radius: 50%;
+            border: none;
+            cursor: pointer;
+        }
+        .stepper-slider input[type="range"]::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            background: #6BCB77;
+            border-radius: 50%;
+            border: none;
+            cursor: pointer;
+        }
+        .value-display { min-width: 60px; text-align: center; font-size: 22px; color: #fff; flex-shrink: 0 }
+        canvas { display: block; position: absolute; top: 0; left: 0 }
+        #flash {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: #fff; opacity: 0; pointer-events: none; transition: opacity 0.4s ease; z-index: 20;
+        }
+        .stats {
+            background: rgba(255,255,255,0.05);
+            border-radius: 8px;
+            padding: 12px;
+            margin-top: 8px;
+        }
+        .stats h3 { margin: 0 0 8px 0; color: #fff; font-size: 20px }
+        .stat-row { display: flex; justify-content: space-between; margin: 4px 0; font-size: 18px }
+        .control-label { font-size: 18px; margin-bottom: 4px; color: #fff }
+        .legend {
+            background: rgba(255,255,255,0.05);
+            border-radius: 8px;
+            padding: 12px;
+            margin-top: 8px;
+        }
+        .legend h3 { margin: 0 0 8px 0; color: #fff; font-size: 20px }
+        .legend-item { display: flex; align-items: center; margin: 6px 0; font-size: 18px }
+        .legend-color { width: 16px; height: 16px; border-radius: 50%; margin-right: 12px; flex-shrink: 0 }
+
+        /* === UPDATED: bottom plots area spans remaining width, 30% height === */
+        #plotsContainer {
+            position: fixed;
+            bottom: 0;
+            left: 340px; /* to the right of controls */
+            right: 0;
+            height: 30vh;          /* 30% of viewport height */
+            background: rgba(255,255,255,0.08);
+            backdrop-filter: blur(10px);
+            border-radius: 12px 0 0 0;
+            padding: 12px;
+            z-index: 10;
+            box-shadow: 0 -8px 32px rgba(0,0,0,0.4);
+            display: flex;
+            gap: 12px;
+        }
+        .plot {
+            flex: 1;
+            background: rgba(255,255,255,0.05);
+            border-radius: 8px;
+            padding: 8px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            position: relative;
+        }
+        .plot h3 {
+            margin: 0 0 6px 0;
+            color: #fff;
+            font-size: 16px;
+            flex: 0 0 auto;
+        }
+        .plot canvas {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.3);
+            border-radius: 4px;
+        }
+        
+        /* Tooltip styles */
+        .tooltip {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.9);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 14px;
+            pointer-events: none;
+            z-index: 1000;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            max-width: 200px;
+            opacity: 0;
+            transition: opacity 0.2s ease;
+        }
+        
+        .tooltip.visible {
+            opacity: 1;
+        }
+    </style>
+</head>
+<body>
+    <div id="controls">
+        <div class="control-label">Nodes:</div>
+        <div class="stepper-slider">
+            <!-- <button onclick="simulation.adjustSlider('nSlider', -25)">−</button> -->
+            <input type="range" id="nSlider" min="100" max="1200" value="600" step="25">
+            <!-- <button onclick="simulation.adjustSlider('nSlider', 25)">+</button> -->
+            <div id="nValue" class="value-display">600</div>
+        </div>
+
+        <div class="control-label">Edge Probability:</div>
+        <div class="stepper-slider">
+            <!-- <button onclick="simulation.adjustSlider('pSlider', -0.001)">−</button> -->
+            <input type="range" id="pSlider" min="0" max="100" value="6" step="0.1">
+            <!-- <button onclick="simulation.adjustSlider('pSlider', 0.001)">+</button> -->
+            <div id="pValue" class="value-display">0.006</div>
+        </div>
+
+        <div class="control-label">Propagation via Network:</div>
+        <div class="stepper-slider">
+            <!-- <button onclick="simulation.adjustSlider('percentSlider', -1000)">−</button> -->
+            <input type="range" id="percentSlider" min="0" max="100000" value="100000" step="1000">
+            <!-- <button onclick="simulation.adjustSlider('percentSlider', 1000)">+</button> -->
+            <div id="percentValue" class="value-display">100.0%</div>
+        </div>
+
+        <div class="control-label">Propagation R0:</div>
+        <div class="stepper-slider">
+            <!-- <button onclick="simulation.adjustSlider('r0Slider', -1)">−</button> -->
+            <input type="range" id="r0Slider" min="0" max="10000" value="2500" step="1">
+            <!-- <button onclick="simulation.adjustSlider('r0Slider', 1)">+</button> -->
+            <div id="r0Value" class="value-display">2.500</div>
+        </div>
+
+        <div class="control-label">Simulation Speed:</div>
+        <div class="stepper-slider">
+            <input type="range" id="speedSlider" min="0" max="500" value="475" step="10">
+            <div id="speedValue" class="value-display">Very Fast</div>
+        </div>
+
+        <div class="ctrl-buttons">
+            <button id="generateBtn">Generate Graph</button>
+            <button id="startBtn" disabled>Start Simulation</button>
+            <!-- <button id="resetBtn">Reset</button> -->
+        </div>
+
+        <div class="stats">
+            <h3>Statistics</h3>
+            <div class="stat-row">
+                <span>Susceptible:</span>
+                <span id="susceptibleCount" style="color: #2196F3;">0</span>
+            </div>
+            <div class="stat-row">
+                <span>Infected:</span>
+                <span id="infectedCount" style="color: #f44336;">0</span>
+            </div>
+            <div class="stat-row">
+                <span>Recovered:</span>
+                <span id="recoveredCount" style="color: #4CAF50;">0</span>
+            </div>
+            <div class="stat-row">
+                <span>Iteration:</span>
+                <span id="iterationCount">0</span>
+            </div>
+            <div class="stat-row">
+                <span>Observed:</span>
+                <span id="observedCount" style="color: #CE93D8;">0</span>
+            </div>
+            <div class="stat-row">
+                <span>Expected:</span>
+                <span id="expectedCount" style="color: #FFC107;">0.00</span>
+            </div>
+            <div class="stat-row">
+                <span>Excess:</span>
+                <span id="excessCount" style="color: #80DEEA;">0.00</span>
+            </div>
+        </div>
+
+        <div class="legend">
+            <h3>Legend</h3>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #2196F3;"></div>
+                <span>Susceptible</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #f44336;"></div>
+                <span>Infected</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #4CAF50;"></div>
+                <span>Recovered</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #CE93D8;"></div>
+                <span>Observed Network Spread</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #FFC107;"></div>
+                <span>Expected Network Spread</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #80DEEA;"></div>
+                <span>Excess Network Spread</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- === UPDATED: plots bar occupies bottom 30% of right area === -->
+    <div id="plotsContainer">
+        <div class="plot">
+            <h3>Epidemic Simulation</h3>
+            <canvas id="sirPlot"></canvas>
+        </div>
+        <div class="plot">
+            <h3>Network Propagation Analysis</h3>
+            <canvas id="infectionPlot"></canvas>
+        </div>
+    </div>
+
+    <!-- Simulation canvas occupies top 70% of right area -->
+    <canvas id="graphCanvas"></canvas>
+    <div id="flash"></div>
+
+    <!-- Tooltip elements -->
+    <div id="sirTooltip" class="tooltip"></div>
+    <div id="infectionTooltip" class="tooltip"></div>
+
+    <script>
+        class SIRSimulation {
+            constructor() {
+                this.canvas = document.getElementById('graphCanvas');
+                this.ctx = this.canvas.getContext('2d');
+                this.sirPlotCanvas = document.getElementById('sirPlot');
+                this.sirPlotCtx = this.sirPlotCanvas.getContext('2d');
+                this.infectionPlotCanvas = document.getElementById('infectionPlot');
+                this.infectionPlotCtx = this.infectionPlotCanvas.getContext('2d');
+
+                this.nodes = [];
+                this.edges = [];
+                this.isRunning = false;
+                this.iteration = 0;
+                this.layoutFinalized = false; // Allow new layout calculation
+                this.simulationDelay = 50; // Default delay
+
+                this.timeSeriesData = {
+                    susceptible: [],
+                    infected: [],
+                    recovered: [],
+                    r: [],
+                    s_real: [],
+                    s_infer: [],
+                    e_real: [],
+                    e_inferred: []
+                };
+
+                this.setupCanvas();
+                this.setupEventListeners();
+                this.setupTooltips();
+                this.updateSliderDisplays();
+                window.simulation = this;
+            }
+
+            /* === UPDATED: layout sizing for canvas and plots === */
+            setupCanvas() {
+                const resizeLayout = () => {
+                    const controlWidth = Math.max(window.innerWidth * 0.2, 320);
+
+                    // Simulation canvas in top 70% of right area
+                    this.canvas.style.left = controlWidth + 'px';
+                    this.canvas.style.top = '0px';
+                    this.canvas.width = Math.max(1, Math.floor(window.innerWidth - controlWidth));
+                    this.canvas.height = Math.max(1, Math.floor(window.innerHeight * 0.7));
+
+                    // Bottom plots container sizing (also set via CSS; JS ensures canvas pixels match CSS)
+                    const plotsContainer = document.getElementById('plotsContainer');
+                    plotsContainer.style.left = controlWidth + 'px';
+                    plotsContainer.style.height = Math.floor(window.innerHeight * 0.3) + 'px';
+
+                    // Size plot canvases to avoid blurry scaling
+                    const containerWidth = Math.max(1, Math.floor(window.innerWidth - controlWidth));
+                    const containerHeight = Math.max(1, Math.floor(window.innerHeight * 0.3));
+                    const gap = 12; // matches CSS gap
+                    const innerPad = 8 + 8; // plot padding left+right
+                    const plotWidth = Math.max(1, Math.floor(containerWidth / 2 - gap/2 - innerPad));
+                    const titleH = 22; // approx h3 height
+                    const plotHeight = Math.max(1, containerHeight - titleH - 16); // minus title and padding
+
+                    this.sirPlotCanvas.width = plotWidth;
+                    this.sirPlotCanvas.height = plotHeight;
+                    this.infectionPlotCanvas.width = plotWidth;
+                    this.infectionPlotCanvas.height = plotHeight;
+
+                    // Only redraw without any layout changes
+                    this.draw();
+                    this.updatePlots();
+                };
+
+                resizeLayout();
+                window.addEventListener('resize', resizeLayout);
+            }
+
+            setupEventListeners() {
+                ['nSlider', 'pSlider', 'percentSlider', 'r0Slider', 'speedSlider'].forEach(id => {
+                    document.getElementById(id).addEventListener('input', this.updateSliderDisplays.bind(this));
+                });
+                document.getElementById('generateBtn').addEventListener('click', this.generateGraph.bind(this));
+                document.getElementById('startBtn').addEventListener('click', this.startSimulation.bind(this));
+                document.getElementById('resetBtn')?.addEventListener('click', this.resetSimulation.bind(this));
+            }
+
+            setupTooltips() {
+                const sirTooltip = document.getElementById('sirTooltip');
+                const infectionTooltip = document.getElementById('infectionTooltip');
+                
+                // SIR plot tooltip
+                this.sirPlotCanvas.addEventListener('mousemove', (e) => {
+                    this.handleTooltip(e, this.sirPlotCanvas, sirTooltip, 'sir');
+                });
+                
+                this.sirPlotCanvas.addEventListener('mouseleave', () => {
+                    sirTooltip.classList.remove('visible');
+                });
+
+                // Infection plot tooltip
+                this.infectionPlotCanvas.addEventListener('mousemove', (e) => {
+                    this.handleTooltip(e, this.infectionPlotCanvas, infectionTooltip, 'infection');
+                });
+                
+                this.infectionPlotCanvas.addEventListener('mouseleave', () => {
+                    infectionTooltip.classList.remove('visible');
+                });
+            }
+
+            handleTooltip(e, canvas, tooltip, type) {
+                if (this.timeSeriesData.susceptible.length < 2) {
+                    tooltip.classList.remove('visible');
+                    return;
+                }
+
+                const rect = canvas.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                
+                const padding = 30;
+                const pw = canvas.width - 2 * padding;
+                const ph = canvas.height - 2 * padding;
+                
+                // Check if mouse is within plot area
+                if (x < padding || x > canvas.width - padding || y < padding || y > canvas.height - padding) {
+                    tooltip.classList.remove('visible');
+                    return;
+                }
+
+                // Calculate iteration from x position
+                const maxIterations = this.timeSeriesData.susceptible.length - 1;
+                const iteration = Math.round(((x - padding) / pw) * maxIterations);
+                
+                if (iteration >= 0 && iteration < this.timeSeriesData.susceptible.length) {
+                    let content = '';
+                    
+                    if (type === 'sir') {
+                        const s = this.timeSeriesData.susceptible[iteration];
+                        const i = this.timeSeriesData.infected[iteration];
+                        const r = this.timeSeriesData.recovered[iteration];
+                        content = `<strong>Iteration ${iteration}</strong><br/>` +
+                                `Susceptible: ${s}<br/>` +
+                                `Infected: ${i}<br/>` +
+                                `Recovered: ${r}`;
+                    } else if (type === 'infection') {
+                        const r = this.timeSeriesData.r[iteration];
+                        const s_infer = this.timeSeriesData.s_infer[iteration];
+                        const e_inferred = this.timeSeriesData.e_inferred[iteration];
+                        content = `<strong>Iteration ${iteration}</strong><br/>` +
+                                `Observed: ${s_infer.toFixed(2)}<br/>` +
+                                `Expected: ${r.toFixed(2)}<br/>` +
+                                `Excess:   ${e_inferred.toFixed(2)}`;
+                    }
+                    
+                    tooltip.innerHTML = content;
+                    tooltip.style.left = (e.clientX + 15) + 'px';
+                    tooltip.style.top = (e.clientY - 10) + 'px';
+                    tooltip.classList.add('visible');
+                } else {
+                    tooltip.classList.remove('visible');
+                }
+            }
+
+            adjustSlider(id, step) {
+                const slider = document.getElementById(id);
+                let value = parseFloat(slider.value) + step;
+                value = Math.min(Math.max(value, parseFloat(slider.min)), parseFloat(slider.max));
+                slider.value = value;
+
+                // Update display
+                const display = document.getElementById(id.replace('Slider', 'Value'));
+                if (id === 'percentSlider') {
+                    display.textContent = (value / 1000).toFixed(1) + '%'; // example scaling
+                } else {
+                    display.textContent = value.toFixed(3); // or toFixed(0) for integers
+                }
+            }
+
+            updateSliderDisplays() {
+                const nValue = document.getElementById('nSlider').value;
+                const pValue = document.getElementById('pSlider').value;
+                const percentValue = document.getElementById('percentSlider').value;
+                const r0Value = document.getElementById('r0Slider').value;
+                const speedValue = document.getElementById('speedSlider').value;
+
+                document.getElementById('nValue').textContent = nValue;
+                document.getElementById('pValue').textContent = (pValue / 1000).toFixed(3);
+                document.getElementById('percentValue').textContent = (percentValue / 1000).toFixed(1) + '%';
+                document.getElementById('r0Value').textContent = (r0Value / 1000).toFixed(3);
+                
+                // Update speed display and simulation delay
+                this.simulationDelay = 500 - parseInt(speedValue);
+                const speedLabels = ['Slow', 'Medium', 'Fast', 'Very Fast'];
+                const speedIndex = Math.floor(parseInt(speedValue) / 125);
+                document.getElementById('speedValue').textContent = speedLabels[Math.min(speedIndex, 3)] || 'Ultra Fast';
+            }
+
+            generateGraph() {
+                const n = parseInt(document.getElementById('nSlider').value);
+                const p = parseFloat(document.getElementById('pSlider').value) / 1000;
+
+                this.nodes = [];
+                this.edges = [];
+                this.isRunning = false;
+                this.iteration = 0;
+
+                for (let i = 0; i < n; i++) {
+                    this.nodes.push({
+                        id: i,
+                        x: Math.random() * this.canvas.width,
+                        y: Math.random() * this.canvas.height,
+                        vx: 0, vy: 0,
+                        state: 'susceptible',
+                        neighbors: []
+                    });
+                }
+
+                for (let i = 0; i < n; i++) {
+                    for (let j = i + 1; j < n; j++) {
+                        if (Math.random() < p) {
+                            this.edges.push([i, j]);
+                            this.nodes[i].neighbors.push(j);
+                            this.nodes[j].neighbors.push(i);
+                        }
+                    }
+                }
+
+                this.ensureConnectivity();
+                this.calculateInfectionProbabilities();
+                this.applyForceLayout();
+                
+                // Scale to viewing area only once, right after generation
+                this.scaleNodesToViewingArea(this.canvas.width, this.canvas.height);
+                this.layoutFinalized = true;
+
+                document.getElementById('startBtn').disabled = false;
+                this.updateStats();
+                this.draw();
+            }
+
+            calculateInfectionProbabilities() {
+                const r0 = parseFloat(document.getElementById('r0Slider').value) / 1000;
+                const totalNodes = this.nodes.length;
+                this.familyInfectionProb = {};
+                this.randomInfectionProb = r0 / totalNodes;
+                this.r0Value = r0;
+                this.totalNodesForR0 = totalNodes;
+            }
+
+            ensureConnectivity() {
+                const n = this.nodes.length;
+                if (n <= 1) return;
+
+                const isolatedNodes = this.nodes.filter(node => node.neighbors.length === 0);
+                isolatedNodes.forEach(isolatedNode => {
+                    const nonIsolatedNodes = this.nodes.filter(node => node.neighbors.length > 0);
+                    if (nonIsolatedNodes.length === 0) {
+                        const targetId = Math.floor(Math.random() * n);
+                        if (targetId !== isolatedNode.id) this.addEdge(isolatedNode.id, targetId);
+                    } else {
+                        const target = nonIsolatedNodes[Math.floor(Math.random() * nonIsolatedNodes.length)];
+                        this.addEdge(isolatedNode.id, target.id);
+                    }
+                });
+
+                const visited = new Array(n).fill(false);
+                const components = [];
+                for (let i = 0; i < n; i++) {
+                    if (!visited[i]) {
+                        const component = [];
+                        this.dfs(i, visited, component);
+                        components.push(component);
+                    }
+                }
+
+                while (components.length > 1) {
+                    const comp1 = components[0];
+                    const comp2 = components[1];
+                    const node1 = comp1[Math.floor(Math.random() * comp1.length)];
+                    const node2 = comp2[Math.floor(Math.random() * comp2.length)];
+                    this.addEdge(node1, node2);
+                    components[0] = [...comp1, ...comp2];
+                    components.splice(1, 1);
+                }
+            }
+
+            addEdge(a, b) {
+                const exists = this.edges.some(([i, j]) => (i === a && j === b) || (i === b && j === a));
+                if (!exists) {
+                    this.edges.push([a, b]);
+                    this.nodes[a].neighbors.push(b);
+                    this.nodes[b].neighbors.push(a);
+                }
+            }
+
+            dfs(id, visited, comp) {
+                visited[id] = true;
+                comp.push(id);
+                this.nodes[id].neighbors.forEach(nid => { if (!visited[nid]) this.dfs(nid, visited, comp) });
+            }
+
+            /* === UPDATED: layout calculation uses full canvas area (no control offset here) === */
+            applyForceLayout() {
+                if (this.nodes.length === 0) return;
+
+                const availableWidth = this.canvas.width;
+                const availableHeight = this.canvas.height;
+                const n = this.nodes.length;
+                const edgeCount = this.edges.length;
+                const maxPossibleEdges = n * (n - 1) / 2;
+                const density = edgeCount / maxPossibleEdges;
+
+                const area = availableWidth * availableHeight;
+                const baseK = Math.sqrt(area / n);
+                const densityFactor = Math.max(0.5, Math.min(2.0, 1.0 + density * 2));
+                const k = baseK * densityFactor;
+
+                const repelStrength = k * k * (0.3 + density * 0.5);
+                const attractStrength = density > 0.01 ? Math.max(0.05, 0.2 - density * 0.15) : 0.03;
+                const iterations = Math.min(400, Math.max(150, n / 2 + density * 100));
+
+                this.nodes.forEach(node => {
+                    if (!node.x || node.x < 0) {
+                        node.x = Math.random() * availableWidth;
+                        node.y = Math.random() * availableHeight;
+                    }
+                    node.vx = 0; node.vy = 0;
+                });
+
+                for (let iter = 0; iter < iterations; iter++) {
+                    const cooling = 1 - (iter / iterations);
+
+                    this.nodes.forEach(node => { node.fx = 0; node.fy = 0; });
+
+                    for (let i = 0; i < n; i++) {
+                        for (let j = i + 1; j < n; j++) {
+                            const A = this.nodes[i], B = this.nodes[j];
+                            const dx = A.x - B.x, dy = A.y - B.y;
+                            const dist = Math.sqrt(dx*dx + dy*dy) + 0.1;
+                            const repulsionRange = k * (2 + density * 2);
+                            if (dist < repulsionRange) {
+                                const f = repelStrength / (dist * dist);
+                                const fx = (dx / dist) * f, fy = (dy / dist) * f;
+                                A.fx += fx; A.fy += fy; B.fx -= fx; B.fy -= fy;
+                            }
+                        }
+                    }
+
+                    this.edges.forEach(([i, j]) => {
+                        const A = this.nodes[i], B = this.nodes[j];
+                        const dx = B.x - A.x, dy = B.y - A.y;
+                        const dist = Math.sqrt(dx*dx + dy*dy) + 0.1;
+                        const f = attractStrength * (dist - k);
+                        const fx = (dx / dist) * f, fy = (dy / dist) * f;
+                        A.fx += fx; A.fy += fy; B.fx -= fx; B.fy -= fy;
+                    });
+
+                    const maxV = k * cooling * 0.1;
+                    const margin = 20;
+
+                    this.nodes.forEach(node => {
+                        node.vx = (node.vx + node.fx) * 0.8;
+                        node.vy = (node.vy + node.fy) * 0.8;
+                        const v = Math.hypot(node.vx, node.vy);
+                        if (v > maxV) { node.vx = (node.vx / v) * maxV; node.vy = (node.vy / v) * maxV; }
+                        node.x = Math.max(margin, Math.min(availableWidth - margin, node.x + node.vx));
+                        node.y = Math.max(margin, Math.min(availableHeight - margin, node.y + node.vy));
+                    });
+                }
+            }
+
+            scaleNodesToViewingArea(width, height) {
+                if (this.nodes.length === 0) return;
+
+                // Find current bounds
+                let minX = Infinity, maxX = -Infinity;
+                let minY = Infinity, maxY = -Infinity;
+                
+                this.nodes.forEach(node => {
+                    minX = Math.min(minX, node.x);
+                    maxX = Math.max(maxX, node.x);
+                    minY = Math.min(minY, node.y);
+                    maxY = Math.max(maxY, node.y);
+                });
+
+                const currentWidth = maxX - minX;
+                const currentHeight = maxY - minY;
+
+                // If the current dimensions are too small, don't scale
+                if (currentWidth < 10 || currentHeight < 10) return;
+
+                // Target dimensions with margins
+                const margin = 20;
+                const minDim = Math.min(width, height)
+                const targetWidth = minDim - 2 * margin;
+                const targetHeight = minDim - 2 * margin;
+                
+                // Use uniform scaling based on the smaller dimension to prevent distortion
+                // This ensures the graph fits within both width and height constraints
+                const scaleX = targetWidth / currentWidth;
+                const scaleY = targetHeight / currentHeight;
+                const uniformScale = Math.min(scaleX, scaleY);
+
+                const centerX = width / 2;
+                const centerY = height / 2;
+                const currentCenterX = (minX + maxX) / 2;
+                const currentCenterY = (minY + maxY) / 2;
+
+                this.nodes.forEach(node => {
+                    // Translate to origin, apply uniform scale, then translate to canvas center
+                    node.x = centerX + (node.x - currentCenterX) * uniformScale;
+                    node.y = centerY + (node.y - currentCenterY) * uniformScale;
+                });
+            }
+
+            startSimulation() {
+                this.resetSimulation();
+                if (this.nodes.length === 0) return;
+                this.calculateInfectionProbabilities();
+
+                const initialInfected = Math.floor(Math.random() * this.nodes.length);
+                this.nodes[initialInfected].state = 'infected';
+
+                this.isRunning = true;
+                // document.getElementById('startBtn').disabled = true;
+
+                const susceptible = this.nodes.filter(n => n.state === 'susceptible').length;
+                const infected = this.nodes.filter(n => n.state === 'infected').length;
+                const recovered = this.nodes.filter(n => n.state === 'recovered').length;
+
+                this.timeSeriesData.susceptible.push(susceptible);
+                this.timeSeriesData.infected.push(infected);
+                this.timeSeriesData.recovered.push(recovered);
+                this.timeSeriesData.r.push(0);
+                this.timeSeriesData.s_real.push(0);
+                this.timeSeriesData.s_infer.push(0);
+                this.timeSeriesData.e_real.push(0);
+                this.timeSeriesData.e_inferred.push(0);
+
+                // Don't reset cumulative counters here - they should persist across the simulation
+                // and only reset when resetSimulation() is called
+
+                this.updateStats();
+                this.draw();
+                this.updatePlots();
+                this.simulationStep();
+            }
+
+            simulationStep() {
+                if (!this.isRunning) return;
+
+                const currentInfected = this.nodes.filter(node => node.state === 'infected');
+                if (currentInfected.length === 0) {
+                    this.isRunning = false;
+                    return;
+                }
+
+                const newInfections = [];
+                const graphPercent = parseInt(document.getElementById('percentSlider').value) / 100000;
+
+                const realGraphInfections = [];
+                const randomInfections = [];
+
+                const allSusceptible = this.nodes.filter(node => node.state === 'susceptible');
+
+                const totalNeighborsOfInfected = new Set();
+                currentInfected.forEach(inf => {
+                    inf.neighbors.forEach(nid => {
+                        if (this.nodes[nid].state === 'susceptible') totalNeighborsOfInfected.add(nid);
+                    });
+                });
+
+                currentInfected.forEach(infectedNode => {
+                    const neighborCount = infectedNode.neighbors.length;
+                    const familyProb = neighborCount > 0 ? this.r0Value / neighborCount : 0;
+
+                    const susceptibleNeighbors = infectedNode.neighbors.filter(nid => {
+                        const neighbor = this.nodes[nid];
+                        return neighbor.state === 'susceptible' && !newInfections.includes(nid);
+                    });
+
+                    if (Math.random() < graphPercent && susceptibleNeighbors.length > 0) {
+                        susceptibleNeighbors.forEach(nid => {
+                            if (Math.random() < familyProb) {
+                                newInfections.push(nid);
+                                realGraphInfections.push(nid);
+                            }
+                        });
+                    }
+
+                    if (Math.random() >= graphPercent && allSusceptible.length > 0) {
+                        allSusceptible.forEach(node => {
+                            if (Math.random() < this.randomInfectionProb && !newInfections.includes(node.id)) {
+                                newInfections.push(node.id);
+                                randomInfections.push(node.id);
+                            }
+                        });
+                    }
+
+                    infectedNode.state = 'recovered';
+                });
+
+                newInfections.forEach(id => { this.nodes[id].state = 'infected'; });
+
+                // Calculate 'r' AFTER new infections are identified
+                // r = number of new infections * (percentage of susceptible nodes that were neighbors)
+                const r = newInfections.length * (totalNeighborsOfInfected.size / allSusceptible.length);
+
+                const neighborsOfPreviouslyInfected = new Set();
+                currentInfected.forEach(inf => inf.neighbors.forEach(nid => neighborsOfPreviouslyInfected.add(nid)));
+
+                const s_infer = newInfections.filter(id => neighborsOfPreviouslyInfected.has(id)).length;
+                const s_real = realGraphInfections.length;
+                const e_real = s_real - r;
+                const e_inferred = s_infer - r;
+
+                this.iteration++;
+
+                const susceptible = this.nodes.filter(n => n.state === 'susceptible').length;
+                const infected = this.nodes.filter(n => n.state === 'infected').length;
+                const recovered = this.nodes.filter(n => n.state === 'recovered').length;
+
+                this.timeSeriesData.susceptible.push(susceptible);
+                this.timeSeriesData.infected.push(infected);
+                this.timeSeriesData.recovered.push(recovered);
+                this.timeSeriesData.r.push(r);
+                this.timeSeriesData.s_real.push(s_real);
+                this.timeSeriesData.s_infer.push(s_infer);
+                this.timeSeriesData.e_real.push(e_real);
+                this.timeSeriesData.e_inferred.push(e_inferred);
+
+                this.updateStats();
+                this.draw();
+                this.updatePlots();
+
+                setTimeout(() => this.simulationStep(), this.simulationDelay);
+            }
+
+            resetSimulation() {
+                this.isRunning = false;
+                this.iteration = 0;
+
+                this.nodes.forEach(node => { node.state = 'susceptible'; });
+
+                this.timeSeriesData = {
+                    susceptible: [],
+                    infected: [],
+                    recovered: [],
+                    r: [],
+                    s_real: [],
+                    s_infer: [],
+                    e_real: [],
+                    e_inferred: []
+                };
+
+                document.getElementById('startBtn').disabled = this.nodes.length === 0;
+                this.updateStats();
+                this.draw();
+                this.updatePlots();
+            }
+
+            updateStats() {
+                const susceptible = this.nodes.filter(n => n.state === 'susceptible').length;
+                const infected = this.nodes.filter(n => n.state === 'infected').length;
+                const recovered = this.nodes.filter(n => n.state === 'recovered').length;
+                
+                document.getElementById('susceptibleCount').textContent = susceptible;
+                document.getElementById('infectedCount').textContent = infected;
+                document.getElementById('recoveredCount').textContent = recovered;
+                document.getElementById('iterationCount').textContent = this.iteration;
+                
+                // Calculate cumulative sums directly from time series data
+                const totalObserved = this.timeSeriesData.s_infer.reduce((sum, val) => sum + val, 0);
+                const totalExpected = this.timeSeriesData.r.reduce((sum, val) => sum + val, 0);
+                const totalExcess = this.timeSeriesData.e_inferred.reduce((sum, val) => sum + val, 0);
+                
+                document.getElementById('observedCount').textContent = totalObserved;
+                document.getElementById('expectedCount').textContent = totalExpected.toFixed(2);
+                document.getElementById('excessCount').textContent = totalExcess.toFixed(2);
+            }
+
+            draw() {
+                this.ctx.fillStyle = '#111';
+                this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+                if (this.nodes.length === 0) return;
+
+                this.ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+                this.ctx.lineWidth = 1;
+                this.edges.forEach(([i, j]) => {
+                    const A = this.nodes[i], B = this.nodes[j];
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(A.x, A.y);
+                    this.ctx.lineTo(B.x, B.y);
+                    this.ctx.stroke();
+                });
+
+                this.nodes.forEach(node => {
+                    let color = node.state === 'susceptible' ? '#2196F3' :
+                                node.state === 'infected'    ? '#f44336' : '#4CAF50';
+                    this.ctx.beginPath();
+                    this.ctx.arc(node.x, node.y, 6, 0, 2 * Math.PI);
+                    this.ctx.fillStyle = color;
+                    this.ctx.fill();
+                    this.ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+                    this.ctx.lineWidth = 1;
+                    this.ctx.stroke();
+                });
+            }
+
+            updatePlots() {
+                this.updateSIRPlot();
+                this.updateInfectionPlot();
+            }
+
+            /* helper to draw small in-plot legend - UPDATED: positioned at top right */
+            drawLegend(ctx, items, canvasWidth, canvasHeight, x = null, y = null) {
+                // items: [{label, color, width}]
+                const lineLen = 18, lineH = 14, pad = 6;
+                const boxW = 100, boxPad = 8;
+                const boxH = items.length * lineH + boxPad;
+                
+                // Position at top right if x,y not specified
+                if (x === null || y === null) {
+                    x = canvasWidth - boxW - 10;
+                    y = 10;
+                }
+                
+                // Legend box
+                ctx.save();
+                ctx.globalAlpha = 0.8;
+                ctx.fillStyle = '#000';
+                ctx.fillRect(x-4, y-6, boxW, boxH);
+                ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+                ctx.lineWidth = 1;
+                ctx.strokeRect(x-4, y-6, boxW, boxH);
+                ctx.restore();
+                
+                // Entries
+                items.forEach((it, idx) => {
+                    const yy = y + idx * lineH + 4;
+                    ctx.lineWidth = it.width || 2;
+                    ctx.strokeStyle = it.color;
+                    ctx.beginPath();
+                    ctx.moveTo(x + pad, yy);
+                    ctx.lineTo(x + pad + lineLen, yy);
+                    ctx.stroke();
+                    ctx.fillStyle = '#fff';
+                    ctx.font = '12px Arial';
+                    ctx.fillText(it.label, x + pad + lineLen + 6, yy + 3);
+                });
+            }
+
+            updateSIRPlot() {
+                const ctx = this.sirPlotCtx;
+                const canvas = this.sirPlotCanvas;
+                const w = canvas.width, h = canvas.height;
+
+                // Hard-clear the canvas to remove any previous drawing (no alpha trails)
+                ctx.save();
+                ctx.setTransform(1, 0, 0, 1, 0, 0); // reset transform if any
+                ctx.globalCompositeOperation = 'source-over';
+                ctx.clearRect(0, 0, w, h);
+                // Fill with an opaque background to match UI (prevents faint transparency echoes)
+                ctx.fillStyle = '#000'; // opaque background
+                ctx.fillRect(0, 0, w, h);
+                ctx.restore();
+
+                if (this.timeSeriesData.susceptible.length < 2) return;
+
+                const d = this.timeSeriesData;
+                const maxIterations = d.susceptible.length - 1;
+                const maxCount = Math.max(
+                    Math.max(...d.susceptible),
+                    Math.max(...d.infected),
+                    Math.max(...d.recovered)
+                );
+
+                const padding = 30;
+                const pw = w - 2 * padding;
+                const ph = h - 2 * padding;
+
+                // axes
+                ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(padding, padding);
+                ctx.lineTo(padding, h - padding);
+                ctx.lineTo(w - padding, h - padding);
+                ctx.stroke();
+
+                const series = [
+                    { data: d.susceptible, color: '#2196F3', label: 'S' },
+                    { data: d.infected,    color: '#f44336', label: 'I' },
+                    { data: d.recovered,   color: '#4CAF50', label: 'R' }
+                ];
+
+                series.forEach(({ data: sd, color }) => {
+                    if (sd.length < 2) return;
+                    ctx.setLineDash([]);               // ensure no dash leftover
+                    ctx.strokeStyle = color;
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    for (let i = 0; i < sd.length; i++) {
+                        const x = padding + (i / maxIterations) * pw;
+                        const y = h - padding - (sd[i] / (maxCount || 1)) * ph;
+                        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+                    }
+                    ctx.stroke();
+                });
+
+                ctx.fillStyle = '#fff';
+                ctx.font = '12px Arial';
+                ctx.fillText('0', padding - 15, h - padding + 3);
+                ctx.fillText(String(maxCount), padding - 25, padding + 3);
+                ctx.fillText('0', padding - 3, h - padding + 15);
+                ctx.fillText(String(maxIterations), w - padding - 10, h - padding + 15);
+            }
+
+            updateInfectionPlot() {
+                const ctx = this.infectionPlotCtx;
+                const canvas = this.infectionPlotCanvas;
+                const w = canvas.width, h = canvas.height;
+
+                // Hard-clear the canvas to remove any previous drawing (no alpha trails)
+                ctx.save();
+                ctx.setTransform(1, 0, 0, 1, 0, 0);
+                ctx.globalCompositeOperation = 'source-over';
+                ctx.clearRect(0, 0, w, h);
+                ctx.fillStyle = '#000'; // opaque background
+                ctx.fillRect(0, 0, w, h);
+                ctx.restore();
+
+                if (this.timeSeriesData.r.length < 2) return;
+
+                const d = this.timeSeriesData;
+                const maxIterations = d.r.length - 1;
+
+                // ORDER: e (real+inferred), r, s (real+inferred)
+                const series = [
+                    { data: d.s_infer,    color: '#CE93D8', width: 2, dash: null, label: 'Observed' },
+                    { data: d.r,          color: '#FFC107', width: 2, dash: null, label: 'Expected' },
+                    { data: d.e_inferred, color: '#80DEEA', width: 4, dash: null, label: 'Excess' },
+                ];
+
+                const allValues = series.flatMap(s => s.data);
+                const posValues = allValues.filter(v => typeof v === 'number' && isFinite(v));
+                const maxValue = posValues.length ? Math.max(...posValues) : 1;
+                const minValue = posValues.length ? Math.min(...posValues) : 0;
+                const range = (maxValue - minValue) || 1;
+
+                const padding = 30;
+                const pw = w - 2 * padding;
+                const ph = h - 2 * padding;
+
+                // axes
+                ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(padding, padding);
+                ctx.lineTo(padding, h - padding);
+                ctx.lineTo(w - padding, h - padding);
+                ctx.stroke();
+
+                series.forEach(s => {
+                    const sd = s.data;
+                    if (!sd || sd.length < 2) return;
+                    ctx.setLineDash(s.dash || []); // dashed for inferred
+                    ctx.strokeStyle = s.color;
+                    ctx.lineWidth = s.width;
+                    ctx.beginPath();
+                    for (let i = 0; i < sd.length; i++) {
+                        const x = padding + (i / maxIterations) * pw;
+                        const yNorm = (sd[i] - minValue) / range;
+                        const y = h - padding - yNorm * ph;
+                        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+                    }
+                    ctx.stroke();
+                    ctx.setLineDash([]); // reset
+                });
+
+                ctx.fillStyle = '#fff';
+                ctx.font = '12px Arial';
+                ctx.fillText(minValue.toFixed(1), padding - 25, h - padding + 3);
+                ctx.fillText(maxValue.toFixed(1), padding - 25, padding + 3);
+                ctx.fillText('0', padding - 3, h - padding + 15);
+                ctx.fillText(String(maxIterations), w - padding - 10, h - padding + 15);
+            }
+        }
+
+        window.addEventListener('load', () => { new SIRSimulation(); });
+    </script>
+</body>
+</html>
