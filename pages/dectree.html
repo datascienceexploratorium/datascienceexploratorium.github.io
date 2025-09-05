@@ -1,342 +1,831 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>DecTree</title>
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      background: #111;
-      overflow: hidden;
-      font-family: Arial, sans-serif;
-      display: flex; /* Use flexbox for main layout */
-      height: 100vh; /* Make body fill viewport height */
-    }
+<meta charset="UTF-8" />
+<title>DecTree</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0 }
+  body {
+    background: #111;
+    color: #eee;
+    font-family: Arial,Helvetica,sans-serif;
+    overflow: hidden;
+  }
+  #controls {
+    position: fixed;
+    font-size: 18px;
+    top: 10px;
+    left: 10px;
+    background: rgba(255,255,255,0.1);
+    backdrop-filter: blur(10px);
+    border-radius: 12px;
+    padding: 10px;
+    display: flex; 
+    flex-direction: column;
+    gap: 8px;
+    z-index: 10;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    height: calc(100vh - 20px); 
+    width: calc(30vw - 20px ); 
+    flex-shrink: 0; 
+  }
 
-    #controls {
-      flex-shrink: 0; /* Prevent controls from shrinking */
-      width: 280px; /* Fixed width for the control panel */
-      background: rgba(255,255,255,0.1);
-      backdrop-filter: blur(10px); /* Add blur effect */
-      border-radius: 12px;
-      padding: 15px;
-      color: #eee;
-      z-index: 10;
-      display: flex;
-      flex-direction: column;
-      gap: 15px; /* Spacing between control elements */
-      margin: 10px; /* Margin around the control panel */
-      box-shadow: 0 8px 32px rgba(0,0,0,0.4); /* Add shadow */
-    }
+  #main-controls-grid {
+      display: grid;
+      grid-template-columns: 30% 70%; 
+      gap: 10px; 
+      width: 100%; 
+      justify-content: center; 
+      align-items: center;
+      flex-shrink: 0; 
+  }
 
-    .control-group {
+  .color-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    align-items: center;
+  }
+
+  .color-box {
+    width: 100%; 
+    max-width: 80px; 
+    height: 35px;
+    border: 2px solid #fff;
+    cursor: pointer;
+    border-radius: 4px;
+  }
+  .color-box.selected {
+    box-shadow: 0 0 0 3px #6BCB77;
+  }
+  #green-color { background-color: #6BCB77; }
+  #purple-color { background-color: #845EC2; }
+
+  .ctrl-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    align-items: center; 
+  }
+  .ctrl-buttons button {
+    width: 100%; 
+    max-width: 180px; 
+    height: 36px;
+    font-size: 16px;
+    background: rgba(255,255,255,0.15);
+    border: 1px solid rgba(255,255,255,0.3);
+    border-radius: 6px;
+    color: #fff;
+    cursor: pointer;
+  }
+  .ctrl-buttons button:active {
+    background: rgba(255,255,255,0.25);
+  }
+  canvas {
+    display: block;
+    position: absolute;
+    top: 0; left: 0;
+  }
+  #flash {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background: #fff;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.4s ease;
+    z-index: 20;
+  }
+  #canvas-container {
+    position: absolute;
+    border: 2px solid rgba(255,255,255,0.3);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  #bottom-panel {
       display: flex;
       flex-direction: column;
       gap: 8px;
-    }
-
-    .control-group label {
-      font-size: 16px;
-      color: #ccc;
-    }
-
-    .control-group input[type="number"] {
-      width: 100px;
-      padding: 6px 10px;
-      border-radius: 6px;
-      border: 1px solid rgba(255,255,255,0.3);
-      background: rgba(0,0,0,0.2);
-      color: #eee;
-      font-size: 15px;
-    }
-
-    .button-group {
-      display: flex;
-      flex-wrap: wrap; /* Allow buttons to wrap */
-      gap: 10px;
-      margin-top: 10px;
-    }
-
-    .button-group button {
-      flex: 1; /* Allow buttons to grow and shrink */
-      min-width: 120px; /* Minimum width for buttons */
-      background: #4D96FF;
-      border: none;
-      color: #fff;
-      padding: 10px 15px;
-      font-size: 15px;
-      border-radius: 6px;
-      cursor: pointer;
-      transition: background 0.2s ease;
-      box-shadow: 0 4px 10px rgba(0,0,0,0.2);
-    }
-    .button-group button:hover { background: #6aabff; }
-    .button-group button:active { background: #3c7ce0; }
-    .button-group button:disabled {
-        background: #555;
-        cursor: not-allowed;
-        box-shadow: none;
-    }
-
-    #canvas-wrapper {
-      flex-grow: 1; /* Allow wrapper to take remaining space */
-      display: flex;
-      flex-direction: column;
-      gap: 10px; /* Spacing between canvases */
-      margin: 10px; /* Margin around the canvas wrapper */
-      position: relative;
-    }
-
-    canvas {
-      display: block;
-      border: 2px solid rgba(255,255,255,0.3);
+      flex-grow: 1; 
+      overflow-y: auto; 
+      width: 100%; 
+      align-items: center;
+  }
+  #summary-stats {
+    background: rgba(255,255,255,0.1);
+    backdrop-filter: blur(10px);
+    border-radius: 12px;
+    padding: 8px 12px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    color: #eee;
+    font-size: 16px;
+    white-space: nowrap;
+    text-align: center;
+    min-width: 250px; 
+    flex-shrink: 0;
+    margin-top: auto;
+    margin-bottom: auto;
+  }
+  #decision-tree-output {
+    max-height: none; 
+    flex-grow: 1; 
+    overflow-y: auto; 
+    width: 95%; 
+    text-align: center;
+    background: rgba(255,255,255,0.1);
+    backdrop-filter: blur(10px);
+    border-radius: 12px;
+    padding: 10px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  }
+  #tree-display {
+      background: #222;
+      padding: 8px;
       border-radius: 8px;
-      background: #222; /* Add a background to canvases */
-    }
+      min-height: 50px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      font-size: 0.9em;
+  }
+  .mermaid {
+      background-color: transparent !important;
+      color: #eee !important;
+  }
+  .node rect, .node circle, .node polygon {
+      fill: rgba(255, 255, 255, 0.1) !important;
+      stroke: #666 !important;
+  }
+  .node text {
+      fill: #eee !important;
+  }
+  .edgePath .path {
+      stroke: #888 !important;
+  }
+  .edgeLabel text {
+      fill: #bbb !important;
+  }
 
-    #plotCanvas {
-      flex-grow: 0.5; /* Plot canvas takes up half the height of the wrapper */
-      height: 50%; /* Set explicit height for plotCanvas to ensure proper distribution */
-    }
-
-    #canvas {
-      flex-grow: 0.5; /* Simulation canvas takes up half the height of the wrapper */
-      height: 50%; /* Set explicit height for simulation canvas */
-    }
-
-    /* Adjust the top position of the plotCanvas to remove absolute positioning */
-    #plotCanvas, #canvas {
-        position: static !important;
-    }
-  </style>
+</style>
 </head>
 <body>
   <div id="controls">
-    <div class="control-group">
-      <label for="sigmaInput">Bandwidth (Sigma):</label>
-      <input id="sigmaInput" type="number" value="3" min="1" max="8" />
+    <div id="main-controls-grid">
+        <div class="color-stack">
+            <div class="color-box selected" id="green-color" data-color="green"></div>
+            <div class="color-box" id="purple-color" data-color="purple"></div>
+        </div>
+        <div class="ctrl-buttons">
+            <button id="fitModelBtn">Fit Model</button>
+            <button id="resetBtn">Reset</button>
+        </div>
     </div>
 
-    <div class="control-group">
-      <label for="distCount">Number of Distributions:</label>
-      <input id="distCount" type="number" value="2" min="1" max="4"/>
-    </div>
-
-    <div class="button-group">
-      <button id="genDistBtn">Generate Distributions</button>
-      <button id="estDensityBtn">Estimate Density</button>
-      <button id="resetBtn">Reset</button>
+    <div id="bottom-panel">
+        <div id="summary-stats">
+          <p id="error-display">Model Error: N/A</p> </div>
+        <div id="decision-tree-output">
+          <h3>Decision Tree:</h3>
+          <pre id="tree-display" class="mermaid">Place points and click 'Fit Model' to see the tree.</pre>
+        </div>
     </div>
   </div>
 
-  <div id="canvas-wrapper">
-    <canvas id="plotCanvas"></canvas>
+  <div id="canvas-container">
     <canvas id="canvas"></canvas>
   </div>
+  <div id="flash"></div>
 
+
+  <script src="https://cdn.jsdelivr.net/npm/p5@1.4.0/lib/p5.js"></script>
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11.0.0/dist/mermaid.esm.min.mjs';
+    window.mermaid = mermaid;
+    mermaid.initialize({
+        startOnLoad: true,
+        theme: 'dark',
+        securityLevel: 'loose',
+    });
+  </script>
   <script>
-    const sigmaInput   = document.getElementById('sigmaInput');
-    const distCount    = document.getElementById('distCount');
-    const genDistBtn   = document.getElementById('genDistBtn');
-    const estDensityBtn= document.getElementById('estDensityBtn');
-    const resetBtn     = document.getElementById('resetBtn');
-    const plotCanvas   = document.getElementById('plotCanvas');
-    const plotCtx      = plotCanvas.getContext('2d');
-    const canvas       = document.getElementById('canvas');
-    const ctx          = canvas.getContext('2d');
 
-    const CELL_SIZE  = 3;
-    const BRUSH_SIZE = 5;
-    const BIN_CELL   = CELL_SIZE * BRUSH_SIZE;
+let points = [];
+let selectedColor = 'green';
+const DOT_RADIUS = 6;
+const SPRAY_RADIUS = 15;
+const GREEN_COLOR = '#6BCB77';
+const PURPLE_COLOR = '#845EC2';
+const GREEN_FILL_TRANSPARENT = 'rgba(107, 203, 119, 0.1)';
+const PURPLE_FILL_TRANSPARENT = 'rgba(132, 94, 194, 0.1)';
 
-    let simCols, simRows, simGrid;
-    let plotCols, plotRows, plotGrid, ghostGrid;
-    let densityInterval = null;
-    let frozen = false;
-    let straightOnly = false;
+let canvasContainer;
+let p5Instance; 
+let W, H;
 
-    function randNormal(mean = 0, std = 1) {
-      const u = Math.random() || 1e-9;
-      const v = Math.random() || 1e-9;
-      return Math.sqrt(-2 * Math.log(u))
-           * Math.cos(2 * Math.PI * v) * std + mean;
+let decisionTreeModel = null;
+let animationSteps = [];
+let currentStepIndex = 0;
+let animationLoopId = null;
+let isAnimating = false;
+
+let greenColorBox;
+let purpleColorBox;
+let fitModelBtn;
+let resetBtn;
+let errorDisplay;
+let treeDisplay;
+let flashEl;
+let controls;
+let summaryStats;
+let decisionTreeOutput;
+let bottomPanel;
+
+const s = (sketch) => {
+  sketch.setup = () => {
+    canvasContainer = document.getElementById('canvas-container');
+    if (!canvasContainer) {
+        console.error("Canvas container not found!");
+        return;
     }
 
-    function initGrids() {
-      // Calculate available space for canvases after controls are rendered
-      const controlsWidth = document.getElementById('controls').offsetWidth + 20; // controls width + 2*margin
-      const width  = window.innerWidth - controlsWidth - 20; // Total width - controls width - 2*canvas-wrapper margin
-      const height = window.innerHeight - 20; // Total height - 2*canvas-wrapper margin
+    const canvas = sketch.createCanvas(canvasContainer.offsetWidth, canvasContainer.offsetHeight);
+    canvas.parent('canvas-container');
+    p5Instance = sketch; 
+    W = sketch.width;
+    H = sketch.height;
 
-      if (densityInterval) clearInterval(densityInterval);
-      genDistBtn.disabled = false;
-      estDensityBtn.disabled = false;
-      frozen = false;
-      straightOnly = false;
+    sketch.background(30);
+    sketch.noStroke();
+  };
 
-      // plot canvas
-      plotCanvas.width  = width;
-      plotCanvas.height = Math.floor(height / 2); // Half of available height
-      plotCols = Math.floor(width / BIN_CELL);
-      plotRows = Math.floor(plotCanvas.height / BIN_CELL);
-      plotGrid = Array.from({ length: plotRows }, () => Array(plotCols).fill(false));
-      ghostGrid= [];
+  sketch.draw = () => {
+    sketch.background(30);
 
-      // simulation canvas
-      canvas.width  = width;
-      canvas.height = height - plotCanvas.height; // Remaining half of available height
-      simCols = Math.floor(width / CELL_SIZE);
-      simRows = Math.floor(canvas.height / CELL_SIZE);
-      simGrid = Array.from({ length: simRows }, () => Array(simCols).fill(null));
+    if (decisionTreeModel && !isAnimating) {
+        drawDecisionRegions(sketch);
     }
 
-    function columnHeight(col) {
-      let h = 0;
-      for (let r = 0; r < simRows; r++) if (simGrid[r][col]) h++;
-      return h;
+    for (const p of points) {
+      sketch.fill(p.color === 'green' ? GREEN_COLOR : PURPLE_COLOR);
+      sketch.ellipse(p.x, p.y, DOT_RADIUS * 2, DOT_RADIUS * 2);
     }
 
-    function spawnBrushAtColumn(colCell) {
-      frozen = false;
-      for (let dr = 0; dr < BRUSH_SIZE; dr++) {
-        const r0 = dr;
-        for (let dc = -Math.floor(BRUSH_SIZE/2); dc <= Math.floor(BRUSH_SIZE/2); dc++) {
-          const c0 = colCell + dc;
-          if (c0<0 || c0>=simCols || simGrid[r0][c0]) continue;
-          simGrid[r0][c0] = {};
+    if (decisionTreeModel && (currentStepIndex === animationSteps.length)) {
+      drawDecisionTreeLines(sketch);
+    }
+
+    if (isAnimating && animationSteps.length > 0) {
+      const step = animationSteps[currentStepIndex];
+      if (step) {
+        sketch.stroke(255, 255, 255, 150);
+        sketch.strokeWeight(2);
+        if (step.type === 'split') {
+          const x1 = step.orientation === 'vertical' ? step.value : step.xMin;
+          const y1 = step.orientation === 'horizontal' ? step.value : step.yMin;
+          const x2 = step.orientation === 'vertical' ? step.value : step.xMax;
+          const y2 = step.orientation === 'horizontal' ? step.value : step.yMax;
+          sketch.line(x1, y1, x2, y2);
         }
       }
     }
+  };
 
-    function updateSim() {
-      if (frozen) return;
-      const sigma = Number(sigmaInput.value)/5;
-      let moved = false;
-      for (let r = simRows-2; r>=0; r--) {
-        for (let c = 0; c < simCols; c++) {
-          const cell = simGrid[r][c];
-          if (!cell) continue;
-          const drift = straightOnly ? 0 : Math.round(randNormal(0, sigma));
-          const newC  = Math.min(simCols-1, Math.max(0, c + drift));
-          const belowR= r + 1;
-          if (!simGrid[belowR][newC]) {
-            simGrid[belowR][newC] = cell;
-            simGrid[r][c] = null;
-            moved = true;
-          } else if (!simGrid[belowR][c]) {
-            simGrid[belowR][c] = cell;
-            simGrid[r][c] = null;
-            moved = true;
-          }
+  sketch.mousePressed = () => {
+    if (!isAnimating && sketch.mouseX > 0 && sketch.mouseX < W && sketch.mouseY > 0 && sketch.mouseY < H) {
+        const offsetX = sketch.random(-SPRAY_RADIUS, SPRAY_RADIUS);
+        const offsetY = sketch.random(-SPRAY_RADIUS, SPRAY_RADIUS);
+        points.push({ x: sketch.mouseX + offsetX, y: sketch.mouseY + offsetY, color: selectedColor });
+        if (decisionTreeModel) { 
+            resetVisualization();
         }
-      }
-      if (!moved) frozen = true;
+    }
+  };
+
+  sketch.mouseDragged = () => {
+    if (!isAnimating && sketch.mouseIsPressed && sketch.mouseX > 0 && sketch.mouseX < W && sketch.mouseY > 0 && sketch.mouseY < H) {
+        const lastPoint = points[points.length - 1];
+        if (!lastPoint || sketch.dist(sketch.mouseX, sketch.mouseY, lastPoint.x, lastPoint.y) > DOT_RADIUS * 2) {
+            const offsetX = sketch.random(-SPRAY_RADIUS, SPRAY_RADIUS);
+            const offsetY = sketch.random(-SPRAY_RADIUS, SPRAY_RADIUS);
+            points.push({ x: sketch.mouseX + offsetX, y: sketch.mouseY + offsetY, color: selectedColor });
+            if (decisionTreeModel) {
+              resetVisualization();
+            }
+        }
+    }
+  };
+
+  sketch.windowResized = () => {
+    if (!controls || !summaryStats || !decisionTreeOutput || !canvasContainer || !p5Instance || !bottomPanel) {
+        return;
     }
 
-    function drawSim() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.fillStyle = '#5F9EA0';
-      for (let r = 0; r < simRows; r++) {
-        for (let c = 0; c < simCols; c++) {
-          if (simGrid[r][c]) ctx.fillRect(c*CELL_SIZE, r*CELL_SIZE, CELL_SIZE, CELL_SIZE);
-        }
-      }
+    const margin = 10;
+    const controlsWidth = controls.offsetWidth + (margin * 2); 
+
+    const newW = window.innerWidth - controlsWidth - margin;
+    const newH = window.innerHeight - (margin * 2);
+
+    canvasContainer.style.width = `${newW}px`;
+    canvasContainer.style.height = `${newH}px`;
+    canvasContainer.style.left = `${controls.offsetLeft + controls.offsetWidth + margin}px`;
+    canvasContainer.style.top = `${margin}px`;
+
+    p5Instance.resizeCanvas(newW, newH);
+    W = newW;
+    H = newH;
+    p5Instance.background(30);
+    p5Instance.redraw();
+  };
+};
+
+document.addEventListener('DOMContentLoaded', () => {
+  greenColorBox = document.getElementById('green-color');
+  purpleColorBox = document.getElementById('purple-color');
+  fitModelBtn = document.getElementById('fitModelBtn');
+  resetBtn = document.getElementById('resetBtn');
+  errorDisplay = document.getElementById('error-display');
+  treeDisplay = document.getElementById('tree-display');
+  flashEl = document.getElementById('flash');
+  controls = document.getElementById('controls');
+  summaryStats = document.getElementById('summary-stats');
+  decisionTreeOutput = document.getElementById('decision-tree-output');
+  bottomPanel = document.getElementById('bottom-panel');
+
+  new p5(s);
+
+  greenColorBox.addEventListener('click', () => {
+    selectedColor = 'green';
+    greenColorBox.classList.add('selected');
+    purpleColorBox.classList.remove('selected');
+  });
+
+  purpleColorBox.addEventListener('click', () => {
+    selectedColor = 'purple';
+    purpleColorBox.classList.add('selected');
+    greenColorBox.classList.remove('selected');
+  });
+
+  fitModelBtn.addEventListener('click', () => {
+    if (points.length === 0) {
+      alert('Please place some points first!');
+      return;
+    }
+    const hasGreen = points.some(p => p.color === 'green');
+    const hasPurple = points.some(p => p.color === 'purple');
+    if (!hasGreen || !hasPurple) {
+      alert('Please place dots of both green and purple colors to fit the model.');
+      return;
     }
 
-    function drawPlot() {
-      plotCtx.clearRect(0, 0, plotCanvas.width, plotCanvas.height);
-      plotCtx.fillStyle = 'rgba(150,150,150,0.4)';
-      for (let r = 0; r < plotRows; r++) {
-        for (let c = 0; c < plotCols; c++) {
-          if (ghostGrid[r]?.[c]) {
-            plotCtx.fillRect(c*BIN_CELL, plotCanvas.height - (r+1)*BIN_CELL, BIN_CELL, BIN_CELL);
-          }
+    fitDecisionTree();
+  });
+
+  resetBtn.addEventListener('click', () => {
+    resetVisualization();
+  });
+
+  displayDecisionTree();
+  setTimeout(() => {
+    window.dispatchEvent(new Event('resize'));
+  }, 100);
+});
+
+function calculateEntropy(labels) {
+    if (labels.length === 0) return 0;
+    const counts = {};
+    for (const label of labels) {
+        counts[label] = (counts[label] || 0) + 1;
+    }
+    let entropy = 0;
+    for (const label in counts) {
+        const prob = counts[label] / labels.length;
+        entropy -= prob * Math.log2(prob);
+    }
+    return entropy;
+}
+
+function calculateCombinedEntropy(labels1, labels2) {
+    const total = labels1.length + labels2.length;
+    if (total === 0) return 0;
+    const entropy1 = calculateEntropy(labels1);
+    const entropy2 = calculateEntropy(labels2);
+    return (labels1.length / total) * entropy1 + (labels2.length / total) * entropy2;
+}
+
+function splitData(pointsData, labelsData, attributeIndex, value) {
+    const group1Labels = [];
+    const group2Labels = [];
+
+    for (let i = 0; i < pointsData.length; i++) {
+        if (pointsData[i][attributeIndex] <= value) {
+            group1Labels.push(labelsData[i]);
+        } else {
+            group2Labels.push(labelsData[i]);
         }
-      }
-      plotCtx.fillStyle = '#6A9955';
-      for (let r = 0; r < plotRows; r++) {
-        for (let c = 0; c < plotCols; c++) {
-          if (plotGrid[r][c]) {
-            plotCtx.fillRect(c*BIN_CELL, plotCanvas.height - (r+1)*BIN_CELL, BIN_CELL, BIN_CELL);
-          }
+    }
+    return [group1Labels, group2Labels];
+}
+
+function findBestSplit(data, labels, xBounds, yBounds, minNumSamples) {
+    let bestSplit = null;
+    let minEntropy = Infinity;
+
+    const filteredIndices = [];
+    for (let i = 0; i < data.length; i++) {
+        const x = data[i][0];
+        const y = data[i][1];
+        if (x >= xBounds.min && x <= xBounds.max && y >= yBounds.min && y <= yBounds.max) {
+            filteredIndices.push(i);
         }
-      }
     }
 
-    function loop() {
-      updateSim();
-      drawSim();
-      drawPlot();
-      requestAnimationFrame(loop);
+    if (filteredIndices.length < minNumSamples) {
+        return null;
     }
 
-    genDistBtn.addEventListener('click', () => {
-      straightOnly = false;
-      if (densityInterval) clearInterval(densityInterval);
-      initGrids();
-      plotGrid = Array.from({ length: plotRows }, () => Array(plotCols).fill(false));
-      for (let d=0; d<Number(distCount.value); d++) {
-        const mu = 10 + Math.random()*30;
-        const sig= 2  + Math.random()*5;
-        const nS = 100 + Math.floor(Math.random()*101);
-        for (let i=0; i<nS; i++) {
-          let x = randNormal(mu, sig);
-          x = Math.max(0, Math.min(50, x));
-          const b = Math.floor((x/50)*plotCols);
-          for (let r=0; r<plotRows; r++) {
-            if (!plotGrid[r][b]) { plotGrid[r][b]=true; break; }
-          }
+    const filteredLabels = filteredIndices.map(i => labels[i]);
+    const uniqueFilteredLabels = [...new Set(filteredLabels)];
+    if (uniqueFilteredLabels.length <= 1) {
+        return null;
+    }
+
+    for (let attributeIndex = 0; attributeIndex < 2; attributeIndex++) {
+        const relevantPoints = filteredIndices.map(i => data[i][attributeIndex]);
+        const sortedUniqueValues = [...new Set(relevantPoints)].sort((a, b) => a - b);
+
+        for (let i = 0; i < sortedUniqueValues.length - 1; i++) {
+            const value = (sortedUniqueValues[i] + sortedUniqueValues[i+1]) / 2;
+
+            if (attributeIndex === 0) {
+                if (value <= xBounds.min || value >= xBounds.max) continue;
+            } else {
+                if (value <= yBounds.min || value >= yBounds.max) continue;
+            }
+
+            const [group1Labels, group2Labels] = splitData(
+                filteredIndices.map(idx => data[idx]),
+                filteredIndices.map(idx => labels[idx]),
+                attributeIndex,
+                value
+            );
+
+            if (group1Labels.length === 0 || group2Labels.length === 0) continue;
+
+            const currentEntropy = calculateCombinedEntropy(group1Labels, group2Labels);
+
+            if (currentEntropy < minEntropy) {
+                minEntropy = currentEntropy;
+                bestSplit = {
+                    attribute: attributeIndex,
+                    value: value,
+                    entropy: currentEntropy,
+                    xMin: xBounds.min, yMin: yBounds.min, xMax: xBounds.max, yMax: yBounds.max
+                };
+            }
         }
+    }
+    return bestSplit;
+}
+
+class DecisionTree {
+    constructor(options) {
+        this.options = {
+            treeOptions: {
+                minNumSamples: 5,
+                maxDepth: 8,
+            },
+            ...options
+        };
+        this.root = null;
+        this.nodeCounter = 0;
+    }
+
+    train(data, labels) {
+        animationSteps = [];
+        this.nodeCounter = 0;
+        this.root = this._buildTree(data, labels, 0, { min: 0, max: W }, { min: 0, max: H });
+    }
+
+    _buildTree(data, labels, depth, xBounds, yBounds) {
+        const nodeId = `N${this.nodeCounter++}`;
+
+        const counts = {};
+        for (const label of labels) {
+            counts[label] = (counts[label] || 0) + 1;
+        }
+        let majorityClass = null;
+        let maxCount = -1;
+        for (const label in counts) {
+            if (counts[label] > maxCount) {
+                maxCount = counts[label];
+                majorityClass = parseInt(label);
+            }
+        }
+
+        const bestSplit = findBestSplit(data, labels, xBounds, yBounds, this.options.treeOptions.minNumSamples);
+
+        if (!bestSplit || depth >= this.options.treeOptions.maxDepth) {
+            return {
+                id: nodeId,
+                type: 'leaf',
+                prediction: majorityClass,
+                sampleCount: labels.length,
+                counts: counts,
+                xMin: xBounds.min, yMin: yBounds.min, xMax: xBounds.max, yMax: yBounds.max
+            };
+        }
+
+        animationSteps.push({
+            type: 'split',
+            orientation: bestSplit.attribute === 0 ? 'vertical' : 'horizontal',
+            value: bestSplit.value,
+            xMin: bestSplit.xMin,
+            yMin: bestSplit.yMin,
+            xMax: bestSplit.xMax,
+            yMax: bestSplit.yMax
+        });
+
+        const [leftDataIndices, rightDataIndices] = this._splitDataForNode(data, labels, bestSplit.attribute, bestSplit.value);
+
+        const leftData = leftDataIndices.map(i => data[i]);
+        const leftLabels = leftDataIndices.map(i => labels[i]);
+        const rightData = rightDataIndices.map(i => data[i]);
+        const rightLabels = rightDataIndices.map(i => labels[i]);
+
+        let leftXBounds = { ...xBounds };
+        let leftYBounds = { ...yBounds };
+        let rightXBounds = { ...xBounds };
+        let rightYBounds = { ...yBounds };
+
+        if (bestSplit.attribute === 0) {
+            leftXBounds.max = bestSplit.value;
+            rightXBounds.min = bestSplit.value;
+        } else {
+            leftYBounds.max = bestSplit.value;
+            rightYBounds.min = bestSplit.value;
+        }
+
+        const leftChild = this._buildTree(leftData, leftLabels, depth + 1, leftXBounds, leftYBounds);
+        const rightChild = this._buildTree(rightData, rightLabels, depth + 1, rightXBounds, rightYBounds);
+
+        return {
+            id: nodeId,
+            type: 'split',
+            attribute: bestSplit.attribute,
+            value: bestSplit.value,
+            left: leftChild,
+            right: rightChild,
+            prediction: majorityClass,
+            sampleCount: labels.length,
+            xMin: xBounds.min, yMin: yBounds.min, xMax: xBounds.max, yMax: yBounds.max
+        };
+    }
+
+    _splitDataForNode(data, labels, attributeIndex, value) {
+        const leftIndices = [];
+        const rightIndices = [];
+        for (let i = 0; i < data.length; i++) {
+            if (data[i][attributeIndex] <= value) {
+                leftIndices.push(i);
+            } else {
+                rightIndices.push(i);
+            }
+        }
+        return [leftIndices, rightIndices];
+    }
+
+    predict(sample) {
+        if (!this.root) {
+            return 0;
+        }
+        return this._predictNode(this.root, sample);
+    }
+
+    _predictNode(node, sample) {
+        if (node.type === 'leaf') {
+            return node.prediction;
+        }
+
+        const attributeValue = sample[node.attribute];
+        if (attributeValue <= node.value) {
+            return this._predictNode(node.left, sample);
+        } else {
+            return this._predictNode(node.right, sample);
+        }
+    }
+
+    toMermaidGraph() {
+        if (!this.root) {
+            return "graph TD\n  A[Place points and click 'Fit Model' to see the tree.];";
+        }
+
+        let graphDefinition = "graph TD\n";
+        let nodeQueue = [this.root];
+
+        while (nodeQueue.length > 0) {
+            const node = nodeQueue.shift();
+
+            let labelText;
+            if (node.type === 'leaf') {
+                const colorName = node.prediction === 0 ? 'Green' : 'Purple';
+                const totalSamples = Object.values(node.counts).reduce((sum, count) => sum + count, 0);
+                const greenCount = node.counts[0] || 0;
+                const purpleCount = node.counts[1] || 0;
+                labelText = `${colorName}<br>(${greenCount}/${purpleCount} total)`;
+                graphDefinition += `  ${node.id}(["${labelText}"]);\n`;
+            } else {
+                const attributeName = node.attribute === 0 ? 'X' : 'Y';
+                labelText = `Is ${attributeName} &lt;= ${node.value.toFixed(1)}?`;
+                graphDefinition += `  ${node.id}{{"${labelText}"}};\n`;
+
+                if (node.left) {
+                    graphDefinition += `  ${node.id} -- "Yes" --> ${node.left.id};\n`;
+                    nodeQueue.push(node.left);
+                }
+                if (node.right) {
+                    graphDefinition += `  ${node.id} -- "No" --> ${node.right.id};\n`;
+                    nodeQueue.push(node.right);
+                }
+            }
+        }
+        return graphDefinition;
+    }
+}
+
+function fitDecisionTree() {
+  if (isAnimating) return;
+
+  const data = points.map(p => [p.x, p.y]);
+  const labels = points.map(p => p.color === 'green' ? 0 : 1);
+
+  decisionTreeModel = new DecisionTree({
+    treeOptions: {
+      minNumSamples: 5,
+      maxDepth: 8,
+    },
+  });
+
+  isAnimating = true;
+  if (treeDisplay) treeDisplay.innerHTML = `
+    <div style="font-size: 1.2em; color: #aaa;">
+      Fitting model...
+      <br>
+      <small style="font-size: 0.8em; color: #888;">(Animating splits)</small>
+    </div>
+  `;
+
+  decisionTreeModel.train(data, labels);
+
+  currentStepIndex = 0;
+  animateFitProcess();
+}
+
+function animateFitProcess() {
+  if (currentStepIndex < animationSteps.length) {
+    if (flashEl) {
+      flashEl.style.opacity = .85;
+      setTimeout(() => flashEl.style.opacity = 0, 90);
+    }
+
+    if (p5Instance && p5Instance.redraw) {
+        p5Instance.redraw();
+    }
+    currentStepIndex++;
+    animationLoopId = setTimeout(animateFitProcess, 500);
+  } else {
+    isAnimating = false;
+    clearTimeout(animationLoopId);
+    if (flashEl) {
+      flashEl.style.opacity = .85;
+      setTimeout(() => flashEl.style.opacity = 0, 90);
+    }
+    calculateAndDisplayError();
+    displayDecisionTree();
+    if (p5Instance && p5Instance.redraw) {
+        p5Instance.redraw();
+    }
+  }
+}
+
+function resetVisualization() {
+  points = [];
+  decisionTreeModel = null;
+  animationSteps = [];
+  currentStepIndex = 0;
+  clearTimeout(animationLoopId);
+  isAnimating = false;
+
+  if (errorDisplay) errorDisplay.textContent = 'Model Error: N/A'; 
+  displayDecisionTree();
+  if (p5Instance && p5Instance.redraw) {
+      p5Instance.redraw();
+  }
+}
+
+function drawDecisionRegions(sketch) {
+    if (!decisionTreeModel || !decisionTreeModel.root) return;
+
+    const drawNodeRegion = (node) => {
+        if (node.type === 'leaf') {
+            const fillColor = node.prediction === 0 ? GREEN_FILL_TRANSPARENT : PURPLE_FILL_TRANSPARENT;
+            sketch.fill(fillColor);
+            sketch.rect(node.xMin, node.yMin, node.xMax - node.xMin, node.yMax - node.yMin);
+            return;
+        }
+
+        drawNodeRegion(node.left);
+        drawNodeRegion(node.right);
+    };
+
+    sketch.noStroke();
+    drawNodeRegion(decisionTreeModel.root);
+}
+
+function drawDecisionTreeLines(sketch) {
+  if (!decisionTreeModel || !decisionTreeModel.root) return;
+
+  const drawNode = (node, xMin, yMin, xMax, yMax) => {
+    if (node.type === 'leaf') {
+      return;
+    }
+
+    sketch.stroke(200, 200, 200);
+    sketch.strokeWeight(1.5);
+
+    if (node.attribute === 0) { 
+      const splitValue = node.value;
+      const clampedSplitValue = Math.max(xMin, Math.min(xMax, splitValue));
+      sketch.line(clampedSplitValue, yMin, clampedSplitValue, yMax);
+      drawNode(node.left, xMin, yMin, clampedSplitValue, yMax);
+      drawNode(node.right, clampedSplitValue, yMin, xMax, yMax);
+    } else { 
+      const splitValue = node.value;
+      const clampedSplitValue = Math.max(yMin, Math.min(yMax, splitValue));
+      sketch.line(xMin, clampedSplitValue, xMax, clampedSplitValue);
+      drawNode(node.left, xMin, yMin, xMax, clampedSplitValue);
+      drawNode(node.right, xMin, clampedSplitValue, xMax, yMax);
+    }
+  };
+
+  drawNode(decisionTreeModel.root, 0, 0, W, H);
+}
+
+function calculateAndDisplayError() {
+  if (!decisionTreeModel || points.length === 0 || !errorDisplay) {
+    if (errorDisplay) errorDisplay.textContent = 'Model Error: N/A';
+    return;
+  }
+
+  let correctPredictions = 0;
+  for (const p of points) {
+    const prediction = decisionTreeModel.predict([p.x, p.y]);
+    const expectedLabel = p.color === 'green' ? 0 : 1;
+    if (prediction === expectedLabel) {
+      correctPredictions++;
+    }
+  }
+
+  const errorRate = ((points.length - correctPredictions) / points.length) * 100;
+  errorDisplay.textContent = `Model Error: ${errorRate.toFixed(2)}%`; 
+}
+
+async function displayDecisionTree() {
+  const treeDisplayElement = document.getElementById('tree-display');
+  if (!treeDisplayElement) return;
+
+  let mermaidGraphSyntax;
+
+  if (!decisionTreeModel) {
+    mermaidGraphSyntax = "graph TD\n  A[Place points and click 'Fit Model' to see the tree.];";
+  } else {
+    mermaidGraphSyntax = decisionTreeModel.toMermaidGraph();
+  }
+
+  treeDisplayElement.textContent = mermaidGraphSyntax;
+
+  if (window.mermaid) {
+      try {
+          const { svg, bindFunctions } = await window.mermaid.render('mermaidGraphDynamic', mermaidGraphSyntax);
+          treeDisplayElement.innerHTML = svg;
+          if (bindFunctions) bindFunctions();
+      } catch (error) {
+          console.error("Mermaid rendering failed:", error);
+          treeDisplayElement.innerHTML = `
+            <div style="color: red; font-size: 0.9em; text-align: center;">
+              Error rendering tree: ${error.message}
+              <br>
+              <small style="color: #ccc;">Check console for details.</small>
+            </div>
+          `;
       }
-      ghostGrid = plotGrid.map(row => row.slice());
-    });
+  } else {
+      console.warn("Mermaid library not loaded. Graph will not render.");
+      treeDisplayElement.textContent = "Mermaid library not loaded. Raw graph syntax:\n" + mermaidGraphSyntax;
+  }
+}
 
-    estDensityBtn.addEventListener('click', () => {
-      straightOnly = false;
-      const cols = Array.from(new Set(
-        plotGrid.flatMap((row, ri) =>
-          row.map((v, ci) => v ? ci : -1)
-        ).filter(c => c>=0)
-      ));
-      if (!cols.length) return;
-      genDistBtn.disabled = estDensityBtn.disabled = true;
-      const topIdx = new Map();
-      cols.forEach(col => {
-        for (let r=plotRows-1; r>=0; r--) {
-          if (plotGrid[r][col]) { topIdx.set(col, r); break; }
-        }
-      });
-      densityInterval = setInterval(() => {
-        if (!cols.length) {
-          clearInterval(densityInterval);
-          genDistBtn.disabled = estDensityBtn.disabled = false;
-          setTimeout(() => { straightOnly = true; }, 1200);
-          return;
-        }
-        const idx = Math.floor(Math.random()*cols.length);
-        const col = cols[idx];
-        const r   = topIdx.get(col);
-        plotGrid[r][col] = false;
-        spawnBrushAtColumn(col*BRUSH_SIZE + Math.floor(BRUSH_SIZE/2));
-        let nt = -1;
-        for (let nr=r-1; nr>=0; nr--) {
-          if (plotGrid[nr][col]) { nt = nr; break; }
-        }
-        if (nt>=0) topIdx.set(col, nt);
-        else {
-          cols.splice(idx,1);
-          topIdx.delete(col);
-        }
-      }, 30);
-    });
-
-    resetBtn.addEventListener('click', () => {
-      if (densityInterval) clearInterval(densityInterval);
-      initGrids();
-    });
-    window.addEventListener('resize', initGrids);
-    window.addEventListener('load', () => { initGrids(); loop(); });
   </script>
 </body>
 </html>
