@@ -27,22 +27,21 @@
             border-radius: 50%;
             cursor: pointer;
             box-shadow: 
-                0 8px 16px rgba(0,0,0,0.6),
-                0 4px 8px rgba(0,0,0,0.5),
-                inset 0 2px 4px rgba(255,255,255,0.6);
+                0 8px 16px rgba(0,0,0,0.3),
+                0 4px 8px rgba(0,0,0,0.2),
+                inset 0 2px 4px rgba(255,255,255,0.3);
             transition: all 0.1s ease;
         }
         
         #soundButton:active {
-            transform: translateY(6px);
+            transform: translateY(4px);
             background: linear-gradient(145deg, #E6751A, #CC7000);
             box-shadow: 
-                0 2px 4px rgba(0,0,0,0.9),
-                0 1px 2px rgba(0,0,0,0.9),
-                inset 0 8px 16px rgba(0,0,0,0.5),
-                inset 0 2px 8px rgba(0,0,0,0.3);
+                0 2px 4px rgba(0,0,0,0.3),
+                0 1px 2px rgba(0,0,0,0.2),
+                inset 0 8px 16px rgba(0,0,0,0.3),
+                inset 0 2px 8px rgba(0,0,0,0.4);
         }
-
     </style>
 </head>
 <body>
@@ -51,15 +50,53 @@
     <script>
         const button = document.getElementById('soundButton');
         
-        function playSound() {
-            const audio = new Audio('../assets/honk-sound.mp3');
-            audio.play().catch(error => {
-                console.log('Error playing sound:', error);
-                alert('Please add your MP3 file path to the code');
-            });
+        let audioBuffer = null;
+        let audioContext = null;
+        
+        // Initialize audio context and buffer for better mobile performance
+        async function initAudio() {
+            try {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const response = await fetch('assets/honk-sound.mp3');
+                const arrayBuffer = await response.arrayBuffer();
+                audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+            } catch (error) {
+                console.log('Web Audio API not supported, falling back to HTML Audio');
+            }
         }
         
-        button.addEventListener('click', playSound);
+        function playSound() {
+            if (audioContext && audioBuffer) {
+                const source = audioContext.createBufferSource();
+                source.buffer = audioBuffer;
+                source.connect(audioContext.destination);
+                source.start();
+            } else {
+                const audio = new Audio('../assets/honk-sound.mp3');
+                audio.play().catch(error => {
+                    console.log('Error playing sound:', error);
+                });
+            }
+        }
+        
+        let audioInitialized = false;
+        function ensureAudioInit() {
+            if (!audioInitialized) {
+                initAudio();
+                audioInitialized = true;
+            }
+        }
+        
+        button.addEventListener('touchstart', function(e) {
+            e.preventDefault(); // Prevent click event from also firing
+            ensureAudioInit();
+            playSound();
+        });
+        button.addEventListener('click', function() {
+            ensureAudioInit();
+            playSound();
+        });
+
         document.addEventListener('keydown', function(event) {
             if (event.code === 'Space') {
                 event.preventDefault();
