@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2D Fourier Epicycles</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0 }
+        body {
+            background: #111;
+            color: #eee;
+            font-family: Arial, Helvetica, sans-serif;
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+        }
+        
+        #controls {
+            position: fixed;
+            font-size: 18px;
+            top: 20px;
+            left: 20px;
+            width: 240px;
+            background: rgba(255,255,255,0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 12px;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            z-index: 10;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+        }
+        
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        
+        .control-label {
+            font-size: 14px;
+            color: #ccc;
+        }
+        
+        .stepper-slider {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .stepper-slider button {
+            width: 32px;
+            height: 32px;
+            font-size: 20px;
+            background: rgba(255,255,255,0.15);
+            border: 1px solid rgba(255,255,255,0.3);
+            border-radius: 6px;
+            color: #fff;
+            cursor: pointer;
+        }
+        
+        .stepper-slider button:active {
+            background: rgba(255,255,255,0.25);
+        }
+        
+        .stepper-slider input[type="range"] {
+            flex: 1;
+            height: 6px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        
+        .stepper-slider input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            background: #6BCB77;
+            border-radius: 50%;
+            border: none;
+            cursor: pointer;
+        }
+        
+        .stepper-slider input[type="range"]::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            background: #6BCB77;
+            border-radius: 50%;
+            border: none;
+            cursor: pointer;
+        }
+        
+        #frequencyValue {
+            width: 32px;
+            text-align: center;
+            font-size: 18px;
+            color: #fff;
+        }
+        
+        .ctrl-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        
+        .ctrl-buttons button {
+            width: 100%;
+            height: 36px;
+            font-size: 16px;
+            background: rgba(255,255,255,0.15);
+            border: 1px solid rgba(255,255,255,0.3);
+            border-radius: 6px;
+            color: #fff;
+            cursor: pointer;
+        }
+        
+        .ctrl-buttons button:active {
+            background: rgba(255,255,255,0.25);
+        }
+        
+        .ctrl-buttons button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        #canvasContainer {
+            position: fixed;
+            top: 20px;
+            left: 280px;
+            right: 20px;
+            bottom: 20px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+        
+        .canvas-wrapper {
+            background: #1a1a1a;
+            border-radius: 8px;
+            overflow: hidden;
+            position: relative;
+        }
+        
+        .canvas-label {
+            position: absolute;
+            top: 8px;
+            left: 12px;
+            font-size: 13px;
+            color: #888;
+            z-index: 1;
+            pointer-events: none;
+        }
+        
+        canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+        
+        #drawCanvas {
+            cursor: crosshair;
+        }
+        
+        .mode-indicator {
+            position: absolute;
+            top: 8px;
+            right: 12px;
+            font-size: 12px;
+            color: #6BCB77;
+            z-index: 1;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="controls">
+        <div class="control-group">
+            <div class="control-label">Frequencies</div>
+            <div class="stepper-slider">
+                <button id="decreaseBtn">−</button>
+                <input type="range" id="frequency" min="1" max="100" value="20">
+                <button id="increaseBtn">+</button>
+                <span id="frequencyValue">20</span>
+            </div>
+        </div>
+        
+        <div class="ctrl-buttons">
+            <button id="decomposeBtn">Decompose</button>
+            <button id="animateBtn" disabled>Animate</button>
+            <button id="stopBtn" disabled>Stop</button>
+            <button id="resetBtn">Reset</button>
+        </div>
+    </div>
+    
+    <div id="canvasContainer">
+        <div class="canvas-wrapper">
+            <div class="canvas-label">Draw</div>
+            <div class="mode-indicator" id="modeIndicator">Click to start</div>
+            <canvas id="drawCanvas"></canvas>
+        </div>
+        <div class="canvas-wrapper">
+            <div class="canvas-label">Epicycles</div>
+            <canvas id="epicyclesCanvas"></canvas>
+        </div>
+    </div>
+
+    <script>
+        const drawCanvas = document.getElementById('drawCanvas');
+        const epicyclesCanvas = document.getElementById('epicyclesCanvas');
+        const drawCtx = drawCanvas.getContext('2d');
+        const epicyclesCtx = epicyclesCanvas.getContext('2d');
+        
+        const frequencySlider = document.getElementById('frequency');
+        const frequencyValue = document.getElementById('frequencyValue');
+        const decreaseBtn = document.getElementById('decreaseBtn');
+        const increaseBtn = document.getElementById('increaseBtn');
+        const decomposeBtn = document.getElementById('decomposeBtn');
+        const animateBtn = document.getElementById('animateBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        const modeIndicator = document.getElementById('modeIndicator');
+        
+        let numFrequencies = 20;
+        let drawnPath = [];
+        let isDrawing = false;
+        let drawingComplete = false;
+        let fourierCoefficients = [];
+        let isAnimating = false;
+        let animationFrame = null;
+        let time = 0;
+        let drawnTrace = [];
+        let frameCount = 0;
+        let pathLength = 0;
+        let fadeFrames = 0;
+        
+        function resizeCanvases() {
+            const container = document.getElementById('canvasContainer');
+            const wrapper = container.querySelector('.canvas-wrapper');
+            
+            drawCanvas.width = wrapper.clientWidth;
+            drawCanvas.height = wrapper.clientHeight;
+            
+            epicyclesCanvas.width = wrapper.clientWidth;
+            epicyclesCanvas.height = wrapper.clientHeight;
+            
+            redrawDrawCanvas();
+            if (fourierCoefficients.length > 0 && !isAnimating) {
+                drawEpicycles(0);
+            }
+        }
+        
+        function redrawDrawCanvas() {
+            drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+            
+            if (drawnPath.length > 1) {
+                drawCtx.strokeStyle = '#2196F3';
+                drawCtx.lineWidth = 3;
+                drawCtx.lineCap = 'round';
+                drawCtx.lineJoin = 'round';
+                drawCtx.beginPath();
+                drawCtx.moveTo(drawnPath[0].x, drawnPath[0].y);
+                
+                for (let i = 1; i < drawnPath.length; i++) {
+                    drawCtx.lineTo(drawnPath[i].x, drawnPath[i].y);
+                }
+                
+                if (drawingComplete) {
+                    drawCtx.closePath();
+                }
+                
+                drawCtx.stroke();
+            }
+        }
+        
+        drawCanvas.addEventListener('mousedown', (e) => {
+            if (isAnimating) return;
+            
+            const rect = drawCanvas.getBoundingClientRect();
+            const x = (e.clientX - rect.left) * (drawCanvas.width / rect.width);
+            const y = (e.clientY - rect.top) * (drawCanvas.height / rect.height);
+            
+            if (!isDrawing) {
+                drawnPath = [{ x, y }];
+                isDrawing = true;
+                drawingComplete = false;
+                modeIndicator.textContent = 'Drawing... (click to finish)';
+                fourierCoefficients = [];
+                animateBtn.disabled = true;
+                redrawDrawCanvas();
+            } else {
+                drawnPath.push({ x, y });
+                isDrawing = false;
+                drawingComplete = true;
+                modeIndicator.textContent = 'Click Decompose';
+                redrawDrawCanvas();
+            }
+        });
+        
+        drawCanvas.addEventListener('mousemove', (e) => {
+            if (!isDrawing) return;
+            
+            const rect = drawCanvas.getBoundingClientRect();
+            const x = (e.clientX - rect.left) * (drawCanvas.width / rect.width);
+            const y = (e.clientY - rect.top) * (drawCanvas.height / rect.height);
+            
+            drawnPath.push({ x, y });
+            redrawDrawCanvas();
+        });
+        
+        frequencySlider.addEventListener('input', (e) => {
+            numFrequencies = parseInt(e.target.value);
+            frequencyValue.textContent = numFrequencies;
+        });
+        
+        decreaseBtn.addEventListener('click', () => {
+            if (numFrequencies > 1) {
+                numFrequencies--;
+                frequencySlider.value = numFrequencies;
+                frequencyValue.textContent = numFrequencies;
+            }
+        });
+        
+        increaseBtn.addEventListener('click', () => {
+            if (numFrequencies < 100) {
+                numFrequencies++;
+                frequencySlider.value = numFrequencies;
+                frequencyValue.textContent = numFrequencies;
+            }
+        });
+        
+        decomposeBtn.addEventListener('click', () => {
+            if (drawnPath.length < 2 || !drawingComplete) return;
+            
+            fourierCoefficients = computeDFT2D(drawnPath, numFrequencies);
+            
+            // Calculate the total path length
+            pathLength = 0;
+            for (let i = 0; i < drawnPath.length - 1; i++) {
+                const dx = drawnPath[i + 1].x - drawnPath[i].x;
+                const dy = drawnPath[i + 1].y - drawnPath[i].y;
+                pathLength += Math.sqrt(dx * dx + dy * dy);
+            }
+            // Close the loop
+            const dx = drawnPath[0].x - drawnPath[drawnPath.length - 1].x;
+            const dy = drawnPath[0].y - drawnPath[drawnPath.length - 1].y;
+            pathLength += Math.sqrt(dx * dx + dy * dy);
+            
+            animateBtn.disabled = false;
+            modeIndicator.textContent = 'Ready to animate';
+            
+            time = 0;
+            drawnTrace = [];
+            drawEpicycles(0);
+        });
+        
+        animateBtn.addEventListener('click', () => {
+            if (fourierCoefficients.length === 0) return;
+            
+            isAnimating = true;
+            time = 0;
+            drawnTrace = [];
+            frameCount = 0;
+            
+            // Estimate frames to complete one loop by simulating the epicycle drawing
+            // We'll draw one full cycle and count how many points that takes
+            const dt = 0.01;
+            let simulatedFrames = 0;
+            let simulatedTime = 0;
+            let totalDistance = 0;
+            let lastX = epicyclesCanvas.width / 2;
+            let lastY = epicyclesCanvas.height / 2;
+            
+            // Simulate one full loop
+            while (simulatedTime < 2 * Math.PI) {
+                let x = epicyclesCanvas.width / 2;
+                let y = epicyclesCanvas.height / 2;
+                
+                for (let i = 0; i < fourierCoefficients.length; i++) {
+                    const coef = fourierCoefficients[i];
+                    const angle = coef.freq * simulatedTime + coef.phase;
+                    x += coef.amp * Math.cos(angle);
+                    y += coef.amp * Math.sin(angle);
+                }
+                
+                if (simulatedFrames > 0) {
+                    const dx = x - lastX;
+                    const dy = y - lastY;
+                    totalDistance += Math.sqrt(dx * dx + dy * dy);
+                }
+                
+                lastX = x;
+                lastY = y;
+                simulatedTime += dt;
+                simulatedFrames++;
+            }
+            
+            // Fade time is 1.5x the time it takes to draw the full path
+            fadeFrames = Math.ceil(simulatedFrames * 1.05);
+            
+            animateBtn.disabled = true;
+            stopBtn.disabled = false;
+            decomposeBtn.disabled = true;
+            modeIndicator.textContent = 'Animating...';
+            
+            animate();
+        });
+        
+        stopBtn.addEventListener('click', () => {
+            isAnimating = false;
+            if (animationFrame) {
+                cancelAnimationFrame(animationFrame);
+                animationFrame = null;
+            }
+            animateBtn.disabled = false;
+            stopBtn.disabled = true;
+            decomposeBtn.disabled = false;
+            modeIndicator.textContent = 'Stopped';
+        });
+        
+        resetBtn.addEventListener('click', () => {
+            if (animationFrame) {
+                cancelAnimationFrame(animationFrame);
+                animationFrame = null;
+            }
+            
+            drawnPath = [];
+            isDrawing = false;
+            drawingComplete = false;
+            fourierCoefficients = [];
+            isAnimating = false;
+            time = 0;
+            drawnTrace = [];
+            
+            animateBtn.disabled = true;
+            stopBtn.disabled = true;
+            decomposeBtn.disabled = false;
+            modeIndicator.textContent = 'Click to start';
+            
+            drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+            epicyclesCtx.clearRect(0, 0, epicyclesCanvas.width, epicyclesCanvas.height);
+        });
+        
+        function computeDFT2D(path, numHarmonics) {
+            const N = path.length;
+            const coefficients = [];
+            
+            // Treat path as complex numbers: z = x + iy
+            const complexPath = path.map(p => ({ re: p.x, im: p.y }));
+            
+            // Compute both positive and negative frequencies (excluding DC/0)
+            const frequencies = [];
+            for (let k = -Math.floor(numHarmonics / 2); k <= Math.floor(numHarmonics / 2); k++) {
+                if (k !== 0) {
+                    frequencies.push(k);
+                }
+            }
+            
+            for (const k of frequencies) {
+                let real = 0;
+                let imag = 0;
+                
+                for (let n = 0; n < N; n++) {
+                    const angle = (-2 * Math.PI * k * n) / N;
+                    const cos = Math.cos(angle);
+                    const sin = Math.sin(angle);
+                    
+                    // Complex multiplication: (a + bi) * (c + di) = (ac - bd) + (ad + bc)i
+                    // complexPath[n] * e^(-2πikn/N)
+                    real += complexPath[n].re * cos - complexPath[n].im * sin;
+                    imag += complexPath[n].re * sin + complexPath[n].im * cos;
+                }
+                
+                real /= N;
+                imag /= N;
+                
+                const amplitude = Math.sqrt(real * real + imag * imag);
+                const phase = Math.atan2(imag, real);
+                
+                coefficients.push({
+                    freq: k,
+                    amp: amplitude,
+                    phase: phase,
+                    re: real,
+                    im: imag
+                });
+            }
+            
+            // Sort by amplitude (largest first) for better visual
+            coefficients.sort((a, b) => b.amp - a.amp);
+            
+            return coefficients;
+        }
+        
+        function drawEpicycles(t) {
+            epicyclesCtx.clearRect(0, 0, epicyclesCanvas.width, epicyclesCanvas.height);
+            
+            const centerX = epicyclesCanvas.width / 2;
+            const centerY = epicyclesCanvas.height / 2;
+            
+            let x = centerX;
+            let y = centerY;
+            
+            // Draw all circles and arms
+            for (let i = 0; i < fourierCoefficients.length; i++) {
+                const coef = fourierCoefficients[i];
+                const freq = coef.freq;
+                const amp = coef.amp;
+                const phase = coef.phase;
+                
+                // Draw circle
+                epicyclesCtx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+                epicyclesCtx.lineWidth = 1;
+                epicyclesCtx.beginPath();
+                epicyclesCtx.arc(x, y, amp, 0, Math.PI * 2);
+                epicyclesCtx.stroke();
+                
+                // Calculate next position using complex exponential
+                // e^(i*theta) = cos(theta) + i*sin(theta)
+                const angle = freq * t + phase;
+                const nextX = x + amp * Math.cos(angle);
+                const nextY = y + amp * Math.sin(angle);
+                
+                // Draw arm
+                epicyclesCtx.strokeStyle = 'rgba(107, 203, 119, 0.6)';
+                epicyclesCtx.lineWidth = 2;
+                epicyclesCtx.beginPath();
+                epicyclesCtx.moveTo(x, y);
+                epicyclesCtx.lineTo(nextX, nextY);
+                epicyclesCtx.stroke();
+                
+                // Draw center point
+                epicyclesCtx.fillStyle = '#6BCB77';
+                epicyclesCtx.beginPath();
+                epicyclesCtx.arc(x, y, 3, 0, Math.PI * 2);
+                epicyclesCtx.fill();
+                
+                x = nextX;
+                y = nextY;
+            }
+            
+            // Draw endpoint
+            epicyclesCtx.fillStyle = '#2196F3';
+            epicyclesCtx.beginPath();
+            epicyclesCtx.arc(x, y, 5, 0, Math.PI * 2);
+            epicyclesCtx.fill();
+            
+            // Add to trace
+            if (isAnimating) {
+                drawnTrace.push({ x, y, frame: frameCount });
+                
+                // Draw trace with fading based on calculated fade duration
+                if (drawnTrace.length > 1) {
+                    epicyclesCtx.lineWidth = 2;
+                    epicyclesCtx.lineCap = 'round';
+                    epicyclesCtx.lineJoin = 'round';
+                    
+                    for (let i = 0; i < drawnTrace.length - 1; i++) {
+                        const point = drawnTrace[i];
+                        const nextPoint = drawnTrace[i + 1];
+                        
+                        // Calculate age of this segment in frames
+                        const age = frameCount - point.frame;
+                        const normalizedAge = age / fadeFrames; // 0 to 1 over fade duration
+                        
+                        // Fade from 1 to 0
+                        const alpha = Math.max(0, 1 - normalizedAge);
+                        
+                        if (alpha > 0) {
+                            epicyclesCtx.strokeStyle = `rgba(33, 150, 243, ${alpha})`;
+                            epicyclesCtx.beginPath();
+                            epicyclesCtx.moveTo(point.x, point.y);
+                            epicyclesCtx.lineTo(nextPoint.x, nextPoint.y);
+                            epicyclesCtx.stroke();
+                        }
+                    }
+                }
+            }
+        }
+        
+        function animate() {
+            const dt = 0.01;
+            time += dt;
+            frameCount++;
+            
+            // Reset time after full loop (but keep frameCount going)
+            if (time >= 2 * Math.PI) {
+                time = time % (2 * Math.PI);
+            }
+            
+            drawEpicycles(time);
+            
+            if (isAnimating) {
+                animationFrame = requestAnimationFrame(animate);
+            }
+        }
+        
+        window.addEventListener('resize', resizeCanvases);
+        
+        resizeCanvases();
+    </script>
+</body>
+</html>

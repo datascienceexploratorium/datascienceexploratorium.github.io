@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fourier Transform Visualizer</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0 }
+        body {
+            background: #111;
+            color: #eee;
+            font-family: Arial, Helvetica, sans-serif;
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+        }
+        
+        #controls {
+            position: fixed;
+            font-size: 18px;
+            top: 20px;
+            left: 20px;
+            width: 240px;
+            background: rgba(255,255,255,0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 12px;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            z-index: 10;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+        }
+        
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        
+        .control-label {
+            font-size: 14px;
+            color: #ccc;
+        }
+        
+        .stepper-slider {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .stepper-slider button {
+            width: 32px;
+            height: 32px;
+            font-size: 20px;
+            background: rgba(255,255,255,0.15);
+            border: 1px solid rgba(255,255,255,0.3);
+            border-radius: 6px;
+            color: #fff;
+            cursor: pointer;
+        }
+        
+        .stepper-slider button:active {
+            background: rgba(255,255,255,0.25);
+        }
+        
+        .stepper-slider input[type="range"] {
+            flex: 1;
+            height: 6px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        
+        .stepper-slider input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            background: #6BCB77;
+            border-radius: 50%;
+            border: none;
+            cursor: pointer;
+        }
+        
+        .stepper-slider input[type="range"]::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            background: #6BCB77;
+            border-radius: 50%;
+            border: none;
+            cursor: pointer;
+        }
+        
+        #harmonicsValue {
+            width: 32px;
+            text-align: center;
+            font-size: 18px;
+            color: #fff;
+        }
+        
+        .ctrl-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        
+        .ctrl-buttons button {
+            width: 100%;
+            height: 36px;
+            font-size: 16px;
+            background: rgba(255,255,255,0.15);
+            border: 1px solid rgba(255,255,255,0.3);
+            border-radius: 6px;
+            color: #fff;
+            cursor: pointer;
+        }
+        
+        .ctrl-buttons button:active {
+            background: rgba(255,255,255,0.25);
+        }
+        
+        .checkbox-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+        }
+        
+        .checkbox-wrapper input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+        
+        #canvasContainer {
+            position: fixed;
+            top: 20px;
+            left: 280px;
+            right: 20px;
+            bottom: 140px;
+            display: grid;
+            grid-template-rows: 1fr 1fr;
+            gap: 12px;
+        }
+        
+        .canvas-wrapper {
+            background: #1a1a1a;
+            border-radius: 8px;
+            overflow: hidden;
+            position: relative;
+        }
+        
+        .canvas-label {
+            position: absolute;
+            top: 8px;
+            left: 12px;
+            font-size: 13px;
+            color: #888;
+            z-index: 1;
+            pointer-events: none;
+        }
+        
+        canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+        
+        #originalCanvas {
+            cursor: crosshair;
+        }
+        
+        #frequencyContainer {
+            position: fixed;
+            left: 280px;
+            right: 20px;
+            bottom: 20px;
+            height: 100px;
+        }
+        
+        #frequencyCanvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+            background: #1a1a1a;
+            border-radius: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div id="controls">
+        <div class="control-group">
+            <div class="control-label">Frequencies</div>
+            <div class="stepper-slider">
+                <button id="decreaseBtn">−</button>
+                <input type="range" id="harmonics" min="1" max="100" value="10">
+                <button id="increaseBtn">+</button>
+                <span id="harmonicsValue">10</span>
+            </div>
+        </div>
+        
+        <div class="control-group">
+            <div class="checkbox-wrapper">
+                <input type="checkbox" id="interpolation">
+                <label for="interpolation">Cubic Spline</label>
+            </div>
+        </div>
+        
+        <div class="ctrl-buttons">
+            <button id="clearBtn">Clear Points</button>
+        </div>
+    </div>
+    
+    <div id="canvasContainer">
+        <div class="canvas-wrapper">
+            <div class="canvas-label">Original & Reconstruction</div>
+            <canvas id="originalCanvas"></canvas>
+        </div>
+        <div class="canvas-wrapper">
+            <div class="canvas-label">Cumulative Sine Waves</div>
+            <canvas id="cumulativeCanvas"></canvas>
+        </div>
+    </div>
+    
+    <div id="frequencyContainer">
+        <div class="canvas-label">Amplitudes</div>
+        <canvas id="frequencyCanvas"></canvas>
+    </div>
+
+    <script>
+        const originalCanvas = document.getElementById('originalCanvas');
+        const cumulativeCanvas = document.getElementById('cumulativeCanvas');
+        const frequencyCanvas = document.getElementById('frequencyCanvas');
+        
+        const originalCtx = originalCanvas.getContext('2d');
+        const cumulativeCtx = cumulativeCanvas.getContext('2d');
+        const frequencyCtx = frequencyCanvas.getContext('2d');
+        
+        const harmonicsSlider = document.getElementById('harmonics');
+        const harmonicsValue = document.getElementById('harmonicsValue');
+        const decreaseBtn = document.getElementById('decreaseBtn');
+        const increaseBtn = document.getElementById('increaseBtn');
+        const interpolationCheckbox = document.getElementById('interpolation');
+        const clearBtn = document.getElementById('clearBtn');
+        
+        let points = [];
+        let numHarmonics = 10;
+        let useSpline = false;
+        const pointSize = 6;
+        let draggedPoint = null;
+        let isDragging = false;
+        let dragStartX = 0;
+        let dragStartY = 0;
+        
+        // Resize canvases to match container dimensions
+        function resizeCanvases() {
+            const container = document.getElementById('canvasContainer');
+            const freqContainer = document.getElementById('frequencyContainer');
+            const wrapper = container.querySelector('.canvas-wrapper');
+            
+            originalCanvas.width = wrapper.clientWidth;
+            originalCanvas.height = wrapper.clientHeight;
+            
+            cumulativeCanvas.width = wrapper.clientWidth;
+            cumulativeCanvas.height = wrapper.clientHeight;
+            
+            frequencyCanvas.width = freqContainer.clientWidth;
+            frequencyCanvas.height = freqContainer.clientHeight;
+            
+            if (points.length > 0) {
+                updateVisualization();
+            }
+        }
+        
+        // Initialize with a simple wave
+        function initializeDefaultWave() {
+            points = [];
+            points.push({ x: 0, y: originalCanvas.height / 2, fixed: true });
+            points.push({ x: originalCanvas.width, y: originalCanvas.height / 2, fixed: true });
+            
+            for (let i = 1; i <= 7; i++) {
+                const x = (i / 8) * originalCanvas.width;
+                const y = originalCanvas.height / 2 + Math.sin(i * Math.PI / 2) * 80;
+                points.push({ x, y });
+            }
+            points.sort((a, b) => a.x - b.x);
+            updateVisualization();
+        }
+        
+        // Event listeners
+        harmonicsSlider.addEventListener('input', (e) => {
+            numHarmonics = parseInt(e.target.value);
+            harmonicsValue.textContent = numHarmonics;
+            updateVisualization();
+        });
+        
+        decreaseBtn.addEventListener('click', () => {
+            if (numHarmonics > 1) {
+                numHarmonics--;
+                harmonicsSlider.value = numHarmonics;
+                harmonicsValue.textContent = numHarmonics;
+                updateVisualization();
+            }
+        });
+        
+        increaseBtn.addEventListener('click', () => {
+            if (numHarmonics < 100) {
+                numHarmonics++;
+                harmonicsSlider.value = numHarmonics;
+                harmonicsValue.textContent = numHarmonics;
+                updateVisualization();
+            }
+        });
+        
+        interpolationCheckbox.addEventListener('change', (e) => {
+            useSpline = e.target.checked;
+            updateVisualization();
+        });
+        
+        clearBtn.addEventListener('click', () => {
+            points = points.filter(p => p.fixed);
+            updateVisualization();
+        });
+        
+        // Mouse event handlers for canvas interaction
+        originalCanvas.addEventListener('mousedown', (e) => {
+            const rect = originalCanvas.getBoundingClientRect();
+            const x = (e.clientX - rect.left) * (originalCanvas.width / rect.width);
+            const y = (e.clientY - rect.top) * (originalCanvas.height / rect.height);
+            
+            const clickedPointIndex = findPointAt(x, y);
+            
+            if (clickedPointIndex !== -1) {
+                if (!points[clickedPointIndex].fixed) {
+                    draggedPoint = clickedPointIndex;
+                    isDragging = true;
+                    dragStartX = x;
+                    dragStartY = y;
+                }
+            } else {
+                points.push({ x, y, fixed: false });
+                points.sort((a, b) => a.x - b.x);
+                updateVisualization();
+            }
+        });
+        
+        originalCanvas.addEventListener('mousemove', (e) => {
+            if (isDragging && draggedPoint !== null) {
+                const rect = originalCanvas.getBoundingClientRect();
+                const x = (e.clientX - rect.left) * (originalCanvas.width / rect.width);
+                const y = (e.clientY - rect.top) * (originalCanvas.height / rect.height);
+                
+                points[draggedPoint].x = Math.max(0, Math.min(originalCanvas.width, x));
+                points[draggedPoint].y = Math.max(0, Math.min(originalCanvas.height, y));
+                
+                updateVisualization();
+            } else {
+                const rect = originalCanvas.getBoundingClientRect();
+                const x = (e.clientX - rect.left) * (originalCanvas.width / rect.width);
+                const y = (e.clientY - rect.top) * (originalCanvas.height / rect.height);
+                
+                const pointIndex = findPointAt(x, y);
+                if (pointIndex !== -1 && !points[pointIndex].fixed) {
+                    originalCanvas.style.cursor = 'pointer';
+                } else if (pointIndex !== -1 && points[pointIndex].fixed) {
+                    originalCanvas.style.cursor = 'not-allowed';
+                } else {
+                    originalCanvas.style.cursor = 'crosshair';
+                }
+            }
+        });
+        
+        originalCanvas.addEventListener('mouseup', (e) => {
+            if (isDragging && draggedPoint !== null) {
+                const rect = originalCanvas.getBoundingClientRect();
+                const x = (e.clientX - rect.left) * (originalCanvas.width / rect.width);
+                const y = (e.clientY - rect.top) * (originalCanvas.height / rect.height);
+                
+                const point = points[draggedPoint];
+                const distance = Math.sqrt((x - dragStartX) ** 2 + (y - dragStartY) ** 2);
+                
+                if (distance < 5 && !point.fixed) {
+                    points.splice(draggedPoint, 1);
+                } else {
+                    points.sort((a, b) => a.x - b.x);
+                }
+                updateVisualization();
+            }
+            
+            isDragging = false;
+            draggedPoint = null;
+        });
+        
+        originalCanvas.addEventListener('mouseleave', () => {
+            isDragging = false;
+            draggedPoint = null;
+            originalCanvas.style.cursor = 'crosshair';
+        });
+        
+        function findPointAt(x, y) {
+            const threshold = pointSize + 5;
+            
+            for (let i = 0; i < points.length; i++) {
+                const point = points[i];
+                const distance = Math.sqrt((x - point.x) ** 2 + (y - point.y) ** 2);
+                
+                if (distance <= threshold) {
+                    return i;
+                }
+            }
+            
+            return -1;
+        }
+        
+        function cubicSpline(points, numSamples) {
+            if (points.length < 2) return [];
+            
+            const n = points.length - 1;
+            const h = [], alpha = [], l = [], mu = [], z = [];
+            const c = new Array(points.length).fill(0);
+            const b = [], d = [];
+            
+            for (let i = 0; i < n; i++) {
+                h[i] = points[i + 1].x - points[i].x;
+            }
+            
+            for (let i = 1; i < n; i++) {
+                alpha[i] = (3 / h[i]) * (points[i + 1].y - points[i].y) - 
+                           (3 / h[i - 1]) * (points[i].y - points[i - 1].y);
+            }
+            
+            l[0] = 1;
+            mu[0] = 0;
+            z[0] = 0;
+            
+            for (let i = 1; i < n; i++) {
+                l[i] = 2 * (points[i + 1].x - points[i - 1].x) - h[i - 1] * mu[i - 1];
+                mu[i] = h[i] / l[i];
+                z[i] = (alpha[i] - h[i - 1] * z[i - 1]) / l[i];
+            }
+            
+            l[n] = 1;
+            z[n] = 0;
+            
+            for (let j = n - 1; j >= 0; j--) {
+                c[j] = z[j] - mu[j] * c[j + 1];
+                b[j] = (points[j + 1].y - points[j].y) / h[j] - h[j] * (c[j + 1] + 2 * c[j]) / 3;
+                d[j] = (c[j + 1] - c[j]) / (3 * h[j]);
+            }
+            
+            const samples = [];
+            const step = originalCanvas.width / numSamples;
+            
+            for (let x = 0; x <= originalCanvas.width; x += step) {
+                let segmentIndex = 0;
+                for (let i = 0; i < n; i++) {
+                    if (x >= points[i].x && x <= points[i + 1].x) {
+                        segmentIndex = i;
+                        break;
+                    }
+                }
+                
+                const dx = x - points[segmentIndex].x;
+                const y = points[segmentIndex].y + 
+                         b[segmentIndex] * dx + 
+                         c[segmentIndex] * dx * dx + 
+                         d[segmentIndex] * dx * dx * dx;
+                
+                samples.push(y);
+            }
+            
+            return samples;
+        }
+        
+        function linearInterpolate(points, numSamples) {
+            if (points.length < 2) return [];
+            
+            const samples = [];
+            const step = originalCanvas.width / (numSamples - 1);
+            
+            for (let i = 0; i < numSamples; i++) {
+                const x = i * step;
+                let y;
+                
+                if (x <= points[0].x) {
+                    y = points[0].y;
+                } else if (x >= points[points.length - 1].x) {
+                    y = points[points.length - 1].y;
+                } else {
+                    for (let j = 0; j < points.length - 1; j++) {
+                        if (x >= points[j].x && x <= points[j + 1].x) {
+                            const t = (x - points[j].x) / (points[j + 1].x - points[j].x);
+                            y = points[j].y + t * (points[j + 1].y - points[j].y);
+                            break;
+                        }
+                    }
+                }
+                
+                samples.push(y);
+            }
+            
+            return samples;
+        }
+        
+        function dft(samples) {
+            const N = samples.length;
+            const mean = samples.reduce((a, b) => a + b, 0) / N;
+            const centered = samples.map(s => s - mean);
+            
+            const coefficients = [];
+            
+            for (let k = 1; k <= numHarmonics; k++) {
+                let real = 0;
+                let imag = 0;
+                
+                for (let n = 0; n < N; n++) {
+                    const angle = (2 * Math.PI * k * n) / N;
+                    real += centered[n] * Math.cos(angle);
+                    imag -= centered[n] * Math.sin(angle);
+                }
+                
+                real = (2 * real) / N;
+                imag = (2 * imag) / N;
+                
+                const amplitude = Math.sqrt(real * real + imag * imag);
+                const phase = Math.atan2(imag, real);
+                
+                coefficients.push({ amplitude, phase, real, imag, frequency: k });
+            }
+            
+            return { coefficients, mean };
+        }
+        
+        function reconstructSignal(fourierData, numSamples) {
+            const { coefficients, mean } = fourierData;
+            const reconstructed = [];
+            
+            for (let n = 0; n < numSamples; n++) {
+                let value = mean;
+                
+                for (let i = 0; i < coefficients.length; i++) {
+                    const { amplitude, phase, frequency } = coefficients[i];
+                    const angle = (2 * Math.PI * frequency * n) / numSamples;
+                    value += amplitude * Math.cos(angle + phase);
+                }
+                
+                reconstructed.push(value);
+            }
+            
+            return reconstructed;
+        }
+        
+        function drawGrid(ctx, canvas) {
+            ctx.strokeStyle = '#222';
+            ctx.lineWidth = 1;
+            
+            for (let i = 0; i <= 10; i++) {
+                const y = (i / 10) * canvas.height;
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(canvas.width, y);
+                ctx.stroke();
+            }
+            
+            ctx.strokeStyle = '#444';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(0, canvas.height / 2);
+            ctx.lineTo(canvas.width, canvas.height / 2);
+            ctx.stroke();
+        }
+        
+        function drawWaveform(ctx, canvas, samples, color = '#2196F3', lineWidth = 2) {
+            if (samples.length < 2) return;
+            
+            ctx.strokeStyle = color;
+            ctx.lineWidth = lineWidth;
+            ctx.beginPath();
+            
+            const step = canvas.width / (samples.length - 1);
+            
+            for (let i = 0; i < samples.length; i++) {
+                const x = i * step;
+                const y = samples[i];
+                
+                if (i === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            }
+            
+            ctx.stroke();
+        }
+        
+        function drawPoints(ctx) {
+            points.forEach(point => {
+                if (point.fixed) {
+                    ctx.fillStyle = '#5a7fa0';
+                    ctx.beginPath();
+                    ctx.arc(point.x, point.y, pointSize - 2, 0, Math.PI * 2);
+                    ctx.fill();
+                    
+                    ctx.strokeStyle = '#7099bb';
+                    ctx.lineWidth = 1;
+                    ctx.stroke();
+                } else {
+                    ctx.fillStyle = '#5a8db8';
+                    ctx.beginPath();
+                    ctx.arc(point.x, point.y, pointSize, 0, Math.PI * 2);
+                    ctx.fill();
+                    
+                    ctx.strokeStyle = '#8bb4d8';
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                }
+            });
+        }
+        
+        function drawFrequencySpectrum(coefficients) {
+            frequencyCtx.clearRect(0, 0, frequencyCanvas.width, frequencyCanvas.height);
+            
+            if (coefficients.length === 0) return;
+            
+            const maxAmplitude = Math.max(...coefficients.map(c => c.amplitude), 1);
+            const maxBarWidth = frequencyCanvas.width * 0.1;
+            const minBarWidth = 2;
+            
+            let barWidth = frequencyCanvas.width / coefficients.length;
+            
+            if (coefficients.length > 8) {
+                barWidth = Math.max(minBarWidth, frequencyCanvas.width / coefficients.length);
+            } else {
+                barWidth = Math.min(maxBarWidth, frequencyCanvas.width / coefficients.length);
+            }
+            
+            const spacing = (frequencyCanvas.width - (barWidth * coefficients.length)) / (coefficients.length + 1);
+            
+            // Determine label skip factor
+            let labelSkip = 1;
+            if (coefficients.length > 20) {
+                if (coefficients.length > 80) {
+                    labelSkip = 10;
+                } else if (coefficients.length > 60) {
+                    labelSkip = 5;
+                } else if (coefficients.length > 40) {
+                    labelSkip = 3;
+                } else {
+                    labelSkip = 2;
+                }
+            }
+            
+            coefficients.forEach((coef, i) => {
+                const barHeight = (coef.amplitude / maxAmplitude) * (frequencyCanvas.height - 30);
+                const x = spacing + i * (barWidth + spacing);
+                const y = frequencyCanvas.height - barHeight - 20;
+                
+                // Calculate alpha based on amplitude (0.2 to 1.0)
+                const amplitudeRatio = coef.amplitude / maxAmplitude;
+                const alpha = 0.2 + (amplitudeRatio * 0.8);
+                
+                frequencyCtx.fillStyle = `rgba(107, 203, 119, ${alpha})`;
+                frequencyCtx.fillRect(x, y, barWidth, barHeight);
+                
+                // Only show label if it's a multiple of labelSkip
+                if (coef.frequency % labelSkip === 0 || i === 0) {
+                    frequencyCtx.fillStyle = '#aaa';
+                    frequencyCtx.font = '11px sans-serif';
+                    frequencyCtx.textAlign = 'center';
+                    frequencyCtx.fillText(coef.frequency, x + barWidth / 2, frequencyCanvas.height - 5);
+                }
+            });
+        }
+        
+        function drawIndividualHarmonics(ctx, canvas, fourierData, numSamples) {
+            const { coefficients, mean } = fourierData;
+            
+            const totalAmplitude = coefficients.reduce((sum, coef) => sum + coef.amplitude, 0);
+            
+            if (totalAmplitude === 0) return;
+            
+            for (let i = 0; i < coefficients.length; i++) {
+                const { amplitude, phase, frequency } = coefficients[i];
+                const harmonicSamples = [];
+                
+                for (let n = 0; n < numSamples; n++) {
+                    const angle = (2 * Math.PI * frequency * n) / numSamples;
+                    const value = mean + (amplitude * Math.cos(angle + phase));
+                    harmonicSamples.push(value);
+                }
+                
+                const contributionRatio = amplitude / totalAmplitude;
+                const alpha = Math.max(0.1, Math.min(contributionRatio * 3, 0.8));
+                
+                ctx.globalAlpha = alpha;
+                drawWaveform(ctx, canvas, harmonicSamples, '#888', 1);
+                ctx.globalAlpha = 1.0;
+            }
+        }
+        
+        function drawCumulativeHarmonics(ctx, canvas, fourierData, numSamples) {
+            const { coefficients, mean } = fourierData;
+            
+            if (coefficients.length === 0) return;
+            
+            // Draw each cumulative sum
+            for (let harmIdx = 0; harmIdx < coefficients.length; harmIdx++) {
+                const cumulativeSamples = [];
+                
+                // Build cumulative sum up to and including this harmonic
+                for (let n = 0; n < numSamples; n++) {
+                    let value = mean;
+                    
+                    for (let i = 0; i <= harmIdx; i++) {
+                        const { amplitude, phase, frequency } = coefficients[i];
+                        const angle = (2 * Math.PI * frequency * n) / numSamples;
+                        value += amplitude * Math.cos(angle + phase);
+                    }
+                    
+                    cumulativeSamples.push(value);
+                }
+                
+                // Draw thin grey line for all but the last
+                if (harmIdx < coefficients.length - 1) {
+                    drawWaveform(ctx, canvas, cumulativeSamples, '#555', 1);
+                } else {
+                    // Draw thicker bold line for the final cumulative (which is the full reconstruction)
+                    drawWaveform(ctx, canvas, cumulativeSamples, '#6BCB77', 3);
+                }
+            }
+        }
+        
+        function updateVisualization() {
+            originalCtx.clearRect(0, 0, originalCanvas.width, originalCanvas.height);
+            cumulativeCtx.clearRect(0, 0, cumulativeCanvas.width, cumulativeCanvas.height);
+            
+            drawGrid(originalCtx, originalCanvas);
+            drawGrid(cumulativeCtx, cumulativeCanvas);
+            
+            if (points.length < 2) {
+                drawPoints(originalCtx);
+                return;
+            }
+            
+            const numSamples = 512;
+            const samples = useSpline ? 
+                cubicSpline(points, numSamples) : 
+                linearInterpolate(points, numSamples);
+            
+            const fourierData = dft(samples);
+            const reconstructed = reconstructSignal(fourierData, numSamples);
+            
+            // Top canvas: original + reconstruction view
+            drawWaveform(originalCtx, originalCanvas, samples, '#2196F3', 3);
+            drawWaveform(originalCtx, originalCanvas, reconstructed, '#6BCB77', 3);
+            drawPoints(originalCtx);
+            
+            // Bottom canvas: cumulative build view (decomposition)
+            drawIndividualHarmonics(cumulativeCtx, cumulativeCanvas, fourierData, numSamples);
+            drawCumulativeHarmonics(cumulativeCtx, cumulativeCanvas, fourierData, numSamples);
+            
+            drawFrequencySpectrum(fourierData.coefficients);
+        }
+        
+        window.addEventListener('resize', resizeCanvases);
+        
+        resizeCanvases();
+        initializeDefaultWave();
+    </script>
+</body>
+</html>
