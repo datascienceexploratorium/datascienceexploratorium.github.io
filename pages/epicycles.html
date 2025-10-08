@@ -441,6 +441,21 @@
             epicyclesCtx.clearRect(0, 0, epicyclesCanvas.width, epicyclesCanvas.height);
         });
         
+        // function computeDFT2D(path, numHarmonics) {
+        //     const N = path.length;
+        //     const coefficients = [];
+            
+        //     // Treat path as complex numbers: z = x + iy
+        //     const complexPath = path.map(p => ({ re: p.x, im: p.y }));
+            
+        //     // Compute both positive and negative frequencies (excluding DC/0)
+        //     const frequencies = [];
+        //     for (let k = -Math.floor((numHarmonics) /2); k <= Math.floor((numHarmonics)/2); k++) {
+        //         if (k !== 0) {
+        //             frequencies.push(k);
+        //         }
+        //     }
+
         function computeDFT2D(path, numHarmonics) {
             const N = path.length;
             const coefficients = [];
@@ -449,11 +464,19 @@
             const complexPath = path.map(p => ({ re: p.x, im: p.y }));
             
             // Compute both positive and negative frequencies (excluding DC/0)
+            // We want exactly numHarmonics total frequencies
             const frequencies = [];
-            for (let k = -Math.floor(numHarmonics / 2); k <= Math.floor(numHarmonics / 2); k++) {
-                if (k !== 0) {
-                    frequencies.push(k);
-                }
+            const halfCount = Math.floor(numHarmonics / 2);
+            
+            // Add negative frequencies
+            for (let k = -halfCount; k < 0; k++) {
+                frequencies.push(k);
+            }
+            
+            // Add positive frequencies (skip 0)
+            const positiveCount = numHarmonics - halfCount;
+            for (let k = 1; k <= positiveCount; k++) {
+                frequencies.push(k);
             }
             
             for (const k of frequencies) {
