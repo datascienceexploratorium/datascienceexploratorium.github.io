@@ -4,20 +4,16 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Kernel Density Estimate</title>
+  <link rel="stylesheet" href="../../assets/shared.css">
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      background: #111;
       overflow: hidden;
-      font-family: Arial, sans-serif;
       display: flex;
       height: 100vh;
     }
     #controls {
       flex-shrink: 0;
       width: 280px;
-      background: rgba(255,255,255,0.1);
-      backdrop-filter: blur(10px);
       border-radius: 12px;
       padding: 15px;
       color: #eee;
@@ -26,7 +22,6 @@
       flex-direction: column;
       gap: 15px;
       margin: 10px;
-      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
     }
     .control-group {
       display: flex;
@@ -84,7 +79,7 @@
       display: block;
       border: 2px solid rgba(255,255,255,0.3);
       border-radius: 8px;
-      background: #222;
+      background: #111;
     }
     #plotCanvas, #canvas {
       position: static !important;
@@ -154,7 +149,7 @@
 
       const controlsWidth   = document.getElementById('controls').offsetWidth + 20;
       const availableWidth  = window.innerWidth - controlsWidth - 20;
-      const availableHeight = window.innerHeight - 20;
+      const availableHeight = window.innerHeight - 30;
 
       plotCanvas.width  = availableWidth;
       plotCanvas.height = Math.floor(availableHeight / 2);
@@ -375,5 +370,6 @@
     window.addEventListener('resize', initGrids);
     window.addEventListener('load', () => { initGrids(); loop(); });
   </script>
+  <a href="/" class="nav-home">&#8592; Home</a>
 </body>
 </html>

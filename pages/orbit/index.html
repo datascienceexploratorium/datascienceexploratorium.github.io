@@ -3,20 +3,16 @@
 <head>
   <meta charset="UTF-8">
   <title>3-Body Problems</title>
+  <link rel="stylesheet" href="../../assets/shared.css">
   <style>
     html, body {
       width: 100vw; height: 100vh;
-      background: #111;
-      color: #eee;
-      font-family: Arial,Helvetica,sans-serif;
       overflow: hidden;
     }
     #controls {
       position: fixed;
       left: 0; top: 0; bottom: 0;
       width: 350px;
-      background: rgba(18,18,18,0.97);
-      box-shadow: 8px 0 32px rgba(0,0,0,0.58);
       border-radius: 0 22px 22px 0;
       padding: 28px 28px 28px 28px;
       z-index: 20;
@@ -36,16 +32,8 @@
       min-width: 0;
       height: 48px;
       font-size: 21px;
-      background: rgba(88,88,88,0.92);
-      border: 1px solid rgba(255,255,255,0.17);
-      border-radius: 8px;
-      color: #fff;
       font-weight: 600;
-      cursor: pointer;
       transition: background 0.2s;
-    }
-    #controls button:active {
-      background: rgba(140,200,140,0.22);
     }
     .stepper-slider {
       display: flex;
@@ -61,11 +49,6 @@
     }
     .stepper-slider input[type="range"] {
       width: 120px;
-      height: 6px;
-      background: rgba(255,255,255,0.14);
-      border-radius: 3px;
-      cursor: pointer;
-      accent-color: #3af;
     }
     .stepper-slider input[type="number"] {
       width: 64px;
@@ -79,7 +62,6 @@
       font-size: 18px;
       margin-top: 8px;
       margin-bottom: 0;
-      white-space: nowrap;
     }
     .planet-control-row label {
       font-size: 18px;
@@ -113,7 +95,7 @@
   </style>
 </head>
 <body>
-  <div id="controls">
+  <div id="controls" class="controls sidebar">
     <div class="ctrl-buttons">
       <button id="startStop">Start</button>
       <button id="reset">Reset</button>
@@ -136,6 +118,7 @@
     <div id="massInputs"></div>
   </div>
   <canvas id="simCanvas"></canvas>
+  <a href="/" class="nav-home">&#8592; Home</a>
   <script>
     const canvas = document.getElementById('simCanvas');
     const ctx = canvas.getContext('2d');
@@ -172,7 +155,7 @@
 
     gravSlider.addEventListener('input', () => { gravValue.textContent = gravSlider.value; draw(); });
     speedSlider.addEventListener('input', () => {
-      animSpeed = +speedSlider.value * 50;
+      animSpeed = +speedSlider.value * 150;
       speedValue.textContent = Math.round(animSpeed);
     });
     numPlanetsInput.addEventListener('input', initPlanets);

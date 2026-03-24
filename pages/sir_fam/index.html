@@ -4,31 +4,20 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SIR Epidemic Simulation</title>
+    <link rel="stylesheet" href="../../assets/shared.css">
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0 }
         body {
-            background: #111;
-            color: #eee;
-            font-family: Arial,Helvetica,sans-serif;
             overflow: hidden;
         }
         /* === UPDATED: fixed 20% (min 250px) left control panel === */
         #controls {
             position: fixed;
-            top: 0;
-            left: 0;
-            bottom: 0;
             width: 320px;
-            background: rgba(255,255,255,0.1);
-            backdrop-filter: blur(10px);
-            border-radius: 0 12px 12px 0;
             padding: 16px;
             display: flex;
             flex-direction: column;
             gap: 12px;
             z-index: 10;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
-            overflow-y: auto;
             overflow-x: hidden;
         }
         .stepper-slider {
@@ -46,56 +35,22 @@
             width: 100%;
             height: 36px;
             font-size: 18px;
-            background: rgba(255,255,255,0.15);
-            border: 1px solid rgba(255,255,255,0.3);
-            border-radius: 6px;
-            color: #fff;
-            cursor: pointer;
-        }
-        .ctrl-buttons button:active { background: rgba(255,255,255,0.25) }
-        .ctrl-buttons button:disabled {
-            background: rgba(255,255,255,0.05);
-            color: rgba(255,255,255,0.3);
-            cursor: not-allowed;
         }
         .stepper-slider button {
             width: 36px;
             height: 36px;
             font-size: 24px;
-            background: rgba(255,255,255,0.15);
-            border: 1px solid rgba(255,255,255,0.3);
-            border-radius: 6px;
-            color: #fff;
-            cursor: pointer;
             flex-shrink: 0;
         }
-        .stepper-slider button:active { background: rgba(255,255,255,0.25) }
         .stepper-slider input[type="range"] {
             width: 180px;
-            height: 6px;
-            background: rgba(255,255,255,0.2);
-            border-radius: 3px;
-            cursor: pointer;
-            -webkit-appearance: none;
-            appearance: none;
             flex-shrink: 0;
         }
         .stepper-slider input[type="range"]::-webkit-slider-thumb {
-            -webkit-appearance: none;
-            width: 16px;
-            height: 16px;
             background: #6BCB77;
-            border-radius: 50%;
-            border: none;
-            cursor: pointer;
         }
         .stepper-slider input[type="range"]::-moz-range-thumb {
-            width: 16px;
-            height: 16px;
             background: #6BCB77;
-            border-radius: 50%;
-            border: none;
-            cursor: pointer;
         }
         .value-display { min-width: 60px; text-align: center; font-size: 22px; color: #fff; flex-shrink: 0 }
         canvas { display: block; position: absolute; top: 0; left: 0 }
@@ -185,7 +140,7 @@
     </style>
 </head>
 <body>
-    <div id="controls">
+    <div id="controls" class="controls sidebar">
         <div class="control-label">Nodes:</div>
         <div class="stepper-slider">
             <!-- <button onclick="simulation.adjustSlider('nSlider', -25)">−</button> -->
@@ -1099,5 +1054,6 @@
 
         window.addEventListener('load', () => { new SIRSimulation(); });
     </script>
+    <a href="/" class="nav-home">&#8592; Home</a>
 </body>
 </html>

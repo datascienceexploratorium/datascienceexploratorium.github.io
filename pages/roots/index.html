@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Root Finding Methods</title>
+<link rel="stylesheet" href="../../assets/shared.css">
+<style>
+  html, body { height: 100%; overflow: hidden; display: flex; }
+
+  /* Sidebar – not a fixed overlay, just a flex column */
+  #sidebar {
+    flex-shrink: 0;
+    width: 280px;
+    height: 100vh;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 16px;
+    background: var(--panel-bg);
+    backdrop-filter: var(--panel-blur);
+    -webkit-backdrop-filter: var(--panel-blur);
+    border-right: 1px solid var(--panel-border);
+    box-shadow: var(--panel-shadow);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    z-index: 10;
+  }
+
+  /* Canvas area fills remaining width */
+  #plot {
+    flex: 1;
+    position: relative;
+    height: 100vh;
+    overflow: hidden;
+  }
+  #plot canvas { position: absolute; top: 0; left: 0; }
+
+  .section-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+  }
+
+  .method-btns { display: flex; gap: 6px; }
+  .method-btns button { flex: 1; font-size: 12px; padding: 6px 4px; }
+  .method-btns button.active {
+    background: var(--color-blue);
+    border-color: var(--color-blue);
+    color: #fff;
+  }
+
+  .func-display {
+    background: rgba(0,0,0,0.3);
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-family: monospace;
+    font-size: 12px;
+    line-height: 1.7;
+    color: var(--text);
+    word-break: break-all;
+  }
+
+  .hint {
+    font-size: 12px;
+    color: var(--text-muted);
+    line-height: 1.5;
+    min-height: 36px;
+  }
+
+  .status {
+    font-size: 12px;
+    color: var(--color-green);
+    min-height: 18px;
+    word-break: break-all;
+  }
+
+  .tol-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+  .tol-val { font-family: monospace; color: var(--text); }
+
+  .iter-list {
+    flex: 1;
+    overflow-y: auto;
+    font-family: monospace;
+    font-size: 11px;
+    color: var(--text-muted);
+    line-height: 1.6;
+    min-height: 0;
+  }
+  .iter-row { color: var(--text); }
+  .iter-row.converged { color: var(--color-green); }
+
+  hr { border: none; border-top: 1px solid var(--border); }
+
+  @media (max-width: 600px) {
+    html, body { flex-direction: column; }
+    #sidebar { width: 100%; height: auto; max-height: 45vh; border-right: none; border-bottom: 1px solid var(--panel-border); }
+    #plot { height: 55vh; }
+  }
+</style>
+</head>
+<body>
+
+<div id="sidebar">
+  <div style="font-size:1.1em;font-weight:bold;color:#fff;">Root Finding</div>
+  <button id="newFuncBtn" style="width:100%">New Function</button>
+
+  <hr>
+
+  <div class="section-label">Method</div>
+  <div class="method-btns">
+    <button id="btnBisect" class="active">Bisection</button>
+    <button id="btnNewton">Newton's</button>
+    <button id="btnSecant">Secant</button>
+  </div>
+
+  <div class="func-display" id="funcDisplay">f(x) = …</div>
+
+  <hr>
+
+  <div class="section-label">Tolerance</div>
+  <div class="tol-row">
+    <span>|f(x)| &lt;</span>
+    <span class="tol-val" id="tolVal">1e-9</span>
+  </div>
+  <input type="range" id="tolSlider" min="-12" max="-2" step="1" value="-9">
+
+  <hr>
+
+  <div class="hint" id="hint"></div>
+  <div class="status" id="status"></div>
+
+  <hr>
+
+  <div class="section-label">Iterations</div>
+  <div class="iter-list" id="iterList"></div>
+</div>
+
+<div id="plot">
+  <canvas id="canvas"></canvas>
+</div>
+
+<a href="/" class="nav-home">&#8592; Home</a>
+
+<script>
+// ── Canvas ────────────────────────────────────────────────────────────────────
+const canvas  = document.getElementById('canvas');
+const ctx     = canvas.getContext('2d');
+const plotDiv = document.getElementById('plot');
+
+function resize() {
+  canvas.width  = plotDiv.offsetWidth;
+  canvas.height = plotDiv.offsetHeight;
+  draw();
+}
+window.addEventListener('resize', resize);
+
+// ── Tolerance ─────────────────────────────────────────────────────────────────
+const tolSlider = document.getElementById('tolSlider');
+const tolValEl  = document.getElementById('tolVal');
+let TOL = 1e-9;
+
+tolSlider.addEventListener('input', () => {
+  TOL = Math.pow(10, +tolSlider.value);
+  tolValEl.textContent = `1e${tolSlider.value}`;
+  resetState(); draw();
+});
+
+// ── View ──────────────────────────────────────────────────────────────────────
+const VIEW = { xMin: -1, xMax: 11, yMin: 0, yMax: 1 };
+
+function setupView() {
+  let lo = Infinity, hi = -Infinity;
+  for (let x = VIEW.xMin; x <= VIEW.xMax; x += 0.04) {
+    const y = fn(x);
+    if (isFinite(y)) { lo = Math.min(lo, y); hi = Math.max(hi, y); }
+  }
+  const pad = Math.max((hi - lo) * 0.25, 1);
+  VIEW.yMin = lo - pad;
+  VIEW.yMax = hi + pad;
+}
+
+const mapX  = x  => (x  - VIEW.xMin) / (VIEW.xMax - VIEW.xMin) * canvas.width;
+const mapY  = y  => canvas.height - (y - VIEW.yMin) / (VIEW.yMax - VIEW.yMin) * canvas.height;
+const umapX = px => VIEW.xMin + (px / canvas.width) * (VIEW.xMax - VIEW.xMin);
+
+// ── Function generation ───────────────────────────────────────────────────────
+let fn, dfn, polyData;
+
+function rnd(a, b) { return a + Math.random() * (b - a); }
+function fmtC(v, first) {
+  const abs = Math.abs(v).toFixed(2).replace(/\.?0+$/, '') || '0';
+  if (first) return (v < 0 ? '-' : '') + abs;
+  return ` ${v < 0 ? '-' : '+'} ${abs}`;
+}
+
+function genFunction() {
+  const r1 = rnd(0.5, 9.5);
+  const r2 = rnd(-2, 12);
+  const r3 = rnd(-2, 12);
+  const a  = (Math.random() < 0.5 ? 1 : -1) * rnd(0.4, 1.8);
+
+  const c3 = a,  c2 = -a*(r1+r2+r3),  c1 = a*(r1*r2+r1*r3+r2*r3),  c0 = -a*r1*r2*r3;
+  const d2 = 3*c3, d1 = 2*c2, d0 = c1;
+
+  const f  = x => c3*x*x*x + c2*x*x + c1*x + c0;
+  const df = x => d2*x*x   + d1*x   + d0;
+
+  const expr  = `f(x) = ${fmtC(c3,true)}x³${fmtC(c2,false)}x²${fmtC(c1,false)}x${fmtC(c0,false)}`;
+  const dExpr = `f′(x) = ${fmtC(d2,true)}x²${fmtC(d1,false)}x${fmtC(d0,false)}`;
+
+  return { f, df, expr, dExpr };
+}
+
+function newFunction() {
+  polyData = genFunction();
+  fn  = polyData.f;
+  dfn = polyData.df;
+  setupView();
+  document.getElementById('funcDisplay').innerHTML = polyData.expr + '<br>' + polyData.dExpr;
+  resetState();
+  draw();
+}
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let method   = 'bisect';
+let clicks   = [];
+let iters    = [];
+let animId   = null;
+let animStep = 0;
+
+const HINTS = {
+  bisect0: 'Click a point where f(x) > 0 (or < 0) to start the bracket.',
+  bisect1: 'Now click a point on the opposite side of the x-axis.',
+  newton:  'Click one starting point near a root.',
+  secant0: 'Click a first starting point.',
+  secant1: 'Click a second starting point.',
+};
+
+function hintKey() {
+  if (method === 'newton') return 'newton';
+  if (method === 'bisect') return clicks.length === 0 ? 'bisect0' : 'bisect1';
+  return clicks.length === 0 ? 'secant0' : 'secant1';
+}
+
+function resetState() {
+  clicks = []; iters = []; animStep = 0;
+  if (animId) { cancelAnimationFrame(animId); animId = null; }
+  document.getElementById('iterList').innerHTML = '';
+  document.getElementById('status').textContent = '';
+  document.getElementById('hint').textContent = HINTS[hintKey()];
+}
+
+// ── Algorithms ────────────────────────────────────────────────────────────────
+const MAX_IT = 60;
+
+function doBisect(a, b) {
+  if (fn(a) * fn(b) > 0) return null;
+  const steps = []; let fa = fn(a);
+  for (let k = 0; k < MAX_IT; k++) {
+    const mid = (a + b) / 2, fm = fn(mid);
+    steps.push({ a, b, mid, fm, iter: k + 1 });
+    if (Math.abs(fm) < TOL || (b - a) / 2 < TOL) break;
+    if (fa * fm < 0) { b = mid; } else { a = mid; fa = fm; }
+  }
+  return steps;
+}
+
+function doNewton(x0) {
+  const steps = []; let x = x0;
+  for (let k = 0; k < MAX_IT; k++) {
+    const fx = fn(x), dfx = dfn(x);
+    steps.push({ x, fx, dfx, iter: k + 1 });
+    if (Math.abs(fx) < TOL) break;
+    if (Math.abs(dfx) < 1e-13) break;
+    x = x - fx / dfx;
+  }
+  return steps;
+}
+
+function doSecant(x0, x1) {
+  const steps = []; let a = x0, b = x1;
+  for (let k = 0; k < MAX_IT; k++) {
+    const fa = fn(a), fb = fn(b);
+    steps.push({ a, b, fa, fb, iter: k + 1 });
+    if (Math.abs(fb) < TOL) break;
+    const den = fb - fa;
+    if (Math.abs(den) < 1e-13) break;
+    const next = b - fb * (b - a) / den;
+    a = b; b = next;
+  }
+  return steps;
+}
+
+// ── Animation ─────────────────────────────────────────────────────────────────
+function startAnim() {
+  animStep = 0;
+  if (animId) cancelAnimationFrame(animId);
+  const n = iters.length;
+  if (n === 0) return;
+  const msPerStep = 1000 / n;
+  let last = null, acc = 0;
+
+  function tick(ts) {
+    if (last === null) last = ts;
+    acc += ts - last; last = ts;
+    const target = Math.min(Math.floor(acc / msPerStep) + 1, n);
+    if (target > animStep) { animStep = target; draw(); updateList(); }
+    if (animStep < n) { animId = requestAnimationFrame(tick); }
+    else {
+      animId = null;
+      const rootX = method === 'bisect' ? iters[n-1].mid
+                  : method === 'newton' ? iters[n-1].x
+                  : iters[n-1].b;
+      document.getElementById('status').textContent =
+        Math.abs(fn(rootX)) < TOL * 1000 ? `Root ≈ ${rootX.toFixed(10)}` : 'Did not converge.';
+    }
+  }
+  animId = requestAnimationFrame(tick);
+}
+
+function updateList() {
+  let html = '';
+  iters.slice(0, animStep).forEach((it, idx) => {
+    const isLast = idx === animStep - 1;
+    const x  = method === 'bisect' ? it.mid : method === 'newton' ? it.x : it.b;
+    const fx = fn(x);
+    const conv = isLast && Math.abs(fx) < TOL;
+    const fStr = Math.abs(fx) < 1e-4 ? fx.toExponential(3) : fx.toFixed(4);
+    html += `<div class="iter-row${conv ? ' converged' : ''}">${it.iter}. x=${x.toFixed(6)}  f=${fStr}</div>`;
+  });
+  const el = document.getElementById('iterList');
+  el.innerHTML = html;
+  el.scrollTop = el.scrollHeight;
+}
+
+// ── Drawing ───────────────────────────────────────────────────────────────────
+const C = {
+  curve:  '#4D96FF',
+  axis:   'rgba(255,255,255,0.3)',
+  grid:   'rgba(255,255,255,0.06)',
+  bisect: '#FFD93D',
+  newton: '#6BCB77',
+  secant: '#FF6B6B',
+  root:   '#6BCB77',
+};
+
+function draw() {
+  if (!polyData) return;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  drawGrid(); drawAxes(); drawCurve(); drawIters(); drawClicks();
+}
+
+function drawGrid() {
+  ctx.strokeStyle = C.grid; ctx.lineWidth = 1;
+  for (let x = Math.ceil(VIEW.xMin); x <= VIEW.xMax; x++) {
+    ctx.beginPath(); ctx.moveTo(mapX(x), 0); ctx.lineTo(mapX(x), canvas.height); ctx.stroke();
+  }
+  const yRange = VIEW.yMax - VIEW.yMin;
+  if (yRange <= 0) return;
+  const step = Math.pow(10, Math.floor(Math.log10(yRange / 4)));
+  for (let y = Math.ceil(VIEW.yMin / step) * step; y <= VIEW.yMax; y += step) {
+    ctx.beginPath(); ctx.moveTo(0, mapY(y)); ctx.lineTo(canvas.width, mapY(y)); ctx.stroke();
+  }
+}
+
+function drawAxes() {
+  ctx.strokeStyle = C.axis; ctx.lineWidth = 1.5;
+  if (VIEW.yMin <= 0 && VIEW.yMax >= 0) {
+    ctx.beginPath(); ctx.moveTo(0, mapY(0)); ctx.lineTo(canvas.width, mapY(0)); ctx.stroke();
+  }
+  if (VIEW.xMin <= 0 && VIEW.xMax >= 0) {
+    ctx.beginPath(); ctx.moveTo(mapX(0), 0); ctx.lineTo(mapX(0), canvas.height); ctx.stroke();
+  }
+  ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.font = '11px Arial'; ctx.textAlign = 'center';
+  const yBase = Math.max(Math.min(mapY(0) + 14, canvas.height - 6), 14);
+  for (let x = Math.ceil(VIEW.xMin); x <= VIEW.xMax; x++) {
+    if (x === 0) continue;
+    ctx.fillText(x, mapX(x), yBase);
+  }
+}
+
+function drawCurve() {
+  ctx.beginPath(); ctx.strokeStyle = C.curve; ctx.lineWidth = 2.5;
+  let started = false;
+  for (let px = 0; px <= canvas.width; px += 2) {
+    const y = fn(umapX(px));
+    if (!isFinite(y)) { started = false; continue; }
+    if (!started) { ctx.moveTo(px, mapY(y)); started = true; }
+    else ctx.lineTo(px, mapY(y));
+  }
+  ctx.stroke();
+}
+
+function drawIters() {
+  if (animStep === 0) return;
+  const shown = iters.slice(0, animStep);
+  const n = shown.length;
+
+  if (method === 'bisect') {
+    shown.forEach((it, idx) => {
+      ctx.fillStyle = `rgba(255,217,61,${0.04 + 0.08 * (idx / n)})`;
+      const x1 = mapX(it.a), x2 = mapX(it.b);
+      ctx.fillRect(Math.min(x1,x2), 0, Math.abs(x2-x1), canvas.height);
+    });
+    const last = shown[n-1];
+    ctx.strokeStyle = C.bisect; ctx.lineWidth = 1.5; ctx.setLineDash([4,4]);
+    [last.a, last.b].forEach(x => {
+      ctx.beginPath(); ctx.moveTo(mapX(x), 0); ctx.lineTo(mapX(x), canvas.height); ctx.stroke();
+    });
+    ctx.setLineDash([]);
+    shown.forEach((it, idx) => {
+      ctx.fillStyle = C.bisect;
+      ctx.globalAlpha = 0.3 + 0.7 * (idx / n);
+      ctx.beginPath(); ctx.arc(mapX(it.mid), mapY(it.fm), 4, 0, Math.PI*2); ctx.fill();
+    });
+    ctx.globalAlpha = 1;
+
+  } else if (method === 'newton') {
+    shown.forEach((it, idx) => {
+      const alpha = 0.2 + 0.7 * (idx / n);
+      const xNext = Math.abs(it.dfx) > 1e-13 ? it.x - it.fx / it.dfx : it.x;
+      ctx.strokeStyle = `rgba(107,203,119,${alpha})`; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(mapX(it.x), mapY(it.fx)); ctx.lineTo(mapX(xNext), mapY(0)); ctx.stroke();
+      ctx.fillStyle = C.newton; ctx.globalAlpha = alpha;
+      ctx.beginPath(); ctx.arc(mapX(it.x), mapY(it.fx), 4, 0, Math.PI*2); ctx.fill();
+      ctx.strokeStyle = `rgba(107,203,119,${alpha * 0.35})`; ctx.lineWidth = 1; ctx.setLineDash([3,3]);
+      ctx.beginPath(); ctx.moveTo(mapX(xNext), mapY(0)); ctx.lineTo(mapX(xNext), mapY(fn(xNext))); ctx.stroke();
+      ctx.setLineDash([]);
+    });
+    ctx.globalAlpha = 1;
+
+  } else {
+    shown.forEach((it, idx) => {
+      const alpha = 0.2 + 0.7 * (idx / n);
+      const den = it.b - it.a;
+      if (Math.abs(den) > 1e-13) {
+        const slope = (it.fb - it.fa) / den;
+        ctx.strokeStyle = `rgba(255,107,107,${alpha})`; ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(mapX(VIEW.xMin), mapY(it.fa + slope * (VIEW.xMin - it.a)));
+        ctx.lineTo(mapX(VIEW.xMax), mapY(it.fa + slope * (VIEW.xMax - it.a)));
+        ctx.stroke();
+      }
+      ctx.fillStyle = C.secant; ctx.globalAlpha = alpha;
+      [[it.a, it.fa],[it.b, it.fb]].forEach(([x,y]) => {
+        ctx.beginPath(); ctx.arc(mapX(x), mapY(y), 4, 0, Math.PI*2); ctx.fill();
+      });
+    });
+    ctx.globalAlpha = 1;
+  }
+
+  if (animStep === iters.length) {
+    const last = iters[n-1];
+    const rootX = method === 'bisect' ? last.mid : method === 'newton' ? last.x : last.b;
+    if (Math.abs(fn(rootX)) < 1e-4) {
+      ctx.fillStyle = C.root;
+      ctx.beginPath(); ctx.arc(mapX(rootX), mapY(0), 9, 0, Math.PI*2); ctx.fill();
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+    }
+  }
+}
+
+function drawClicks() {
+  clicks.forEach(pt => {
+    ctx.fillStyle = '#fff'; ctx.strokeStyle = 'rgba(0,0,0,0.5)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(mapX(pt.x), mapY(pt.y), 6, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+  });
+}
+
+// ── Click handling ─────────────────────────────────────────────────────────────
+canvas.addEventListener('click', e => {
+  if (!polyData) return;
+  if (iters.length > 0) { resetState(); draw(); return; }
+
+  const rect = canvas.getBoundingClientRect();
+  const x = Math.max(VIEW.xMin, Math.min(VIEW.xMax, umapX(e.clientX - rect.left)));
+  const pt = { x, y: fn(x) };
+
+  if (method === 'newton') {
+    clicks = [pt];
+    iters = doNewton(x);
+    startAnim(); draw(); return;
+  }
+
+  if (clicks.length === 0) {
+    clicks = [pt];
+    document.getElementById('hint').textContent = HINTS[hintKey()];
+    draw(); return;
+  }
+
+  clicks = [clicks[0], pt];
+
+  if (method === 'bisect') {
+    const a = Math.min(clicks[0].x, clicks[1].x);
+    const b = Math.max(clicks[0].x, clicks[1].x);
+    const result = doBisect(a, b);
+    if (!result) {
+      document.getElementById('status').textContent = 'f(a) and f(b) must have opposite signs.';
+      clicks = []; draw(); return;
+    }
+    iters = result;
+  } else {
+    iters = doSecant(clicks[0].x, clicks[1].x);
+  }
+  startAnim(); draw();
+});
+
+// ── Controls ──────────────────────────────────────────────────────────────────
+function setMethod(m) {
+  method = m;
+  document.querySelectorAll('.method-btns button').forEach(b => b.classList.remove('active'));
+  document.getElementById({ bisect:'btnBisect', newton:'btnNewton', secant:'btnSecant' }[m]).classList.add('active');
+  resetState(); draw();
+}
+
+document.getElementById('btnBisect').addEventListener('click', () => setMethod('bisect'));
+document.getElementById('btnNewton').addEventListener('click', () => setMethod('newton'));
+document.getElementById('btnSecant').addEventListener('click', () => setMethod('secant'));
+document.getElementById('newFuncBtn').addEventListener('click', newFunction);
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+resize();
+newFunction();
+</script>
+</body>
+</html>

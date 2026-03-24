@@ -4,13 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Numerical Integration</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../../assets/shared.css">
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0 }
         body {
-            background: #111;
-            color: #eee;
-            font-family: 'Inter', sans-serif;
             display: flex;
         }
         #controls {
@@ -56,25 +52,8 @@
         .ctrl-buttons button {
             width: 100%;
             height: 40px;
-            font-size: 16px;
             font-weight: 600;
-            background: rgba(255,255,255,0.1);
-            border: 1px solid rgba(255,255,255,0.3);
-            border-radius: 6px;
-            color: #fff;
-            cursor: pointer;
             transition: background-color 0.2s ease;
-        }
-        .ctrl-buttons button:disabled {
-            background: rgba(255,255,255,0.05);
-            color: rgba(255,255,255,0.3);
-            cursor: not-allowed;
-        }
-        .ctrl-buttons button:not(:disabled):hover {
-            background: rgba(255,255,255,0.2);
-        }
-        .ctrl-buttons button:not(:disabled):active {
-            background: rgba(255,255,255,0.25);
         }
         #results-container {
             margin-top: 12px;
@@ -388,69 +367,68 @@
                     return y0 * l0 + y1 * l1 + y2 * l2;
                 };
                 
+                const stepsPerFrame = Math.max(1, Math.ceil(n / 60));
                 function animationStep() {
-                    if (i >= n) {
-                        appState.animationFrameId = null;
-                        return;
-                    }
-                    ctx.fillStyle = color;
-                    ctx.strokeStyle = 'rgba(255,255,255,0.3)';
-                    ctx.lineWidth = 1;
+                    for (let s = 0; s < stepsPerFrame && i < n; s++) {
+                        ctx.fillStyle = color;
+                        ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+                        ctx.lineWidth = 1;
 
-                    if (method === 'simpson') {
-                        const x0 = a + i * h;
-                        const x1 = a + (i + 1) * h;
-                        const x2 = a + (i + 2) * h;
-                        
-                        if (x2 > b + 1e-9) { 
-                            i = n; 
-                            appState.animationFrameId = requestAnimationFrame(animationStep);
-                            return;
-                        }
+                        if (method === 'simpson') {
+                            const x0 = a + i * h;
+                            const x1 = a + (i + 1) * h;
+                            const x2 = a + (i + 2) * h;
 
-                        const y0 = appState.func(x0);
-                        const y1 = appState.func(x1);
-                        const y2 = appState.func(x2);
+                            if (x2 > b + 1e-9) { i = n; break; }
 
-                        ctx.beginPath();
-                        ctx.moveTo(mapX(x0), mapY(0));
-                        ctx.lineTo(mapX(x0), mapY(y0));
-
-                        const plotStep = h / 20; 
-                        for (let plotX = x0 + plotStep; plotX <= x2; plotX += plotStep) {
-                            const plotY = lagrangeParabola(plotX, x0, y0, x1, y1, x2, y2);
-                            ctx.lineTo(mapX(plotX), mapY(plotY));
-                        }
-                        ctx.lineTo(mapX(x2), mapY(y2));
-
-                        ctx.lineTo(mapX(x2), mapY(0));
-                        ctx.closePath();
-                        ctx.fill();
-                        ctx.stroke();
-
-                        i += 2;
-                    } else {
-                        const x0 = a + i * h;
-                        const x1 = a + (i + 1) * h;
-                        ctx.beginPath();
-                        if (method === 'midpoint') {
-                            const midY = appState.func((x0 + x1) / 2);
-                            ctx.rect(mapX(x0), mapY(midY), mapX(x1) - mapX(x0), mapY(0) - mapY(midY));
-                        } else { 
                             const y0 = appState.func(x0);
                             const y1 = appState.func(x1);
+                            const y2 = appState.func(x2);
+
+                            ctx.beginPath();
                             ctx.moveTo(mapX(x0), mapY(0));
                             ctx.lineTo(mapX(x0), mapY(y0));
-                            ctx.lineTo(mapX(x1), mapY(y1));
-                            ctx.lineTo(mapX(x1), mapY(0));
+
+                            const plotStep = h / 20;
+                            for (let plotX = x0 + plotStep; plotX <= x2; plotX += plotStep) {
+                                const plotY = lagrangeParabola(plotX, x0, y0, x1, y1, x2, y2);
+                                ctx.lineTo(mapX(plotX), mapY(plotY));
+                            }
+                            ctx.lineTo(mapX(x2), mapY(y2));
+
+                            ctx.lineTo(mapX(x2), mapY(0));
                             ctx.closePath();
+                            ctx.fill();
+                            ctx.stroke();
+
+                            i += 2;
+                        } else {
+                            const x0 = a + i * h;
+                            const x1 = a + (i + 1) * h;
+                            ctx.beginPath();
+                            if (method === 'midpoint') {
+                                const midY = appState.func((x0 + x1) / 2);
+                                ctx.rect(mapX(x0), mapY(midY), mapX(x1) - mapX(x0), mapY(0) - mapY(midY));
+                            } else {
+                                const y0 = appState.func(x0);
+                                const y1 = appState.func(x1);
+                                ctx.moveTo(mapX(x0), mapY(0));
+                                ctx.lineTo(mapX(x0), mapY(y0));
+                                ctx.lineTo(mapX(x1), mapY(y1));
+                                ctx.lineTo(mapX(x1), mapY(0));
+                                ctx.closePath();
+                            }
+                            ctx.fill();
+                            ctx.stroke();
+                            i++;
                         }
-                        ctx.fill();
-                        ctx.stroke();
-                        i++;
                     }
-                    
-                    appState.animationFrameId = requestAnimationFrame(animationStep);
+
+                    if (i < n) {
+                        appState.animationFrameId = requestAnimationFrame(animationStep);
+                    } else {
+                        appState.animationFrameId = null;
+                    }
                 }
                 appState.animationFrameId = requestAnimationFrame(animationStep);
             }
@@ -464,5 +442,6 @@
             resizeCanvas();
         });
     </script>
+    <a href="/" class="nav-home">&#8592; Home</a>
 </body>
 </html>

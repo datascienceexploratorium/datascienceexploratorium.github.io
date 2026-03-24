@@ -4,17 +4,13 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>GraphViewer</title>
+  <link rel="stylesheet" href="../../assets/shared.css">
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-    background: #222;
-    color: #eee;
-    font-family: Arial,Helvetica,sans-serif;
     overflow: hidden;
     }
 
     p {
-    font-family: Arial,Helvetica,sans-serif;
     font-size: 14px;
     color: #eee;
     text-align: justify;
@@ -26,15 +22,8 @@
     top: 20px;
     left: 20px;
     font-size: 20px;
-    background: rgba(255,255,255,0.1);
-    backdrop-filter: blur(10px);
-    border-radius: 12px;
     padding: 16px;
-    display: inline-flex;
-    flex-direction: column;
-    gap: 12px;
     z-index: 10;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
     }
 
     /* file input: hide built-in filename, style only the button */
@@ -72,14 +61,6 @@
     width: 100%;
     height: 36px;
     font-size: 18px;
-    background: rgba(255,255,255,0.15);
-    border: 1px solid rgba(255,255,255,0.3);
-    border-radius: 6px;
-    color: #fff;
-    cursor: pointer;
-    }
-    .ctrl-buttons button:active {
-    background: rgba(255,255,255,0.25);
     }
 
     /* slider full‐width and green accent */
@@ -90,11 +71,6 @@
     }
     .stepper-slider input[type="range"] {
     width: 100%;
-    height: 6px;
-    background: rgba(255,255,255,0.2);
-    border-radius: 3px;
-    cursor: pointer;
-    accent-color: #6BCB77;
     }
 
     /* green checkbox */
@@ -124,7 +100,7 @@
   </style>
 </head>
 <body>
-<div id="controls">
+<div id="controls" class="controls">
     <h2>Graph Viewer</h2>
   <div class="file-input-container">
     <input type="file" id="fileInput" accept=".csv">
@@ -425,5 +401,6 @@
     fileNameDisplay.textContent = e.target.files[0]?.name || '';
     });
   </script>
+<a href="/" class="nav-home">&#8592; Home</a>
 </body>
 </html>
