@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Numerical Differentiation</title>
+<link rel="stylesheet" href="../../assets/shared.css">
+<style>
+  html, body { height: 100%; overflow: hidden; display: flex; }
+
+  #sidebar {
+    flex-shrink: 0;
+    width: 300px;
+    height: 100vh;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 16px;
+    background: var(--panel-bg);
+    backdrop-filter: var(--panel-blur);
+    -webkit-backdrop-filter: var(--panel-blur);
+    border-right: 1px solid var(--panel-border);
+    box-shadow: var(--panel-shadow);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    z-index: 10;
+  }
+
+  #plot {
+    flex: 1;
+    position: relative;
+    height: 100vh;
+    overflow: hidden;
+    cursor: crosshair;
+  }
+  #plot canvas { position: absolute; top: 0; left: 0; }
+
+  .section-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+  }
+
+  .func-display {
+    background: rgba(0,0,0,0.35);
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-family: monospace;
+    font-size: 12px;
+    line-height: 1.9;
+    color: var(--text);
+    word-break: break-all;
+  }
+
+  .h-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 13px;
+    color: var(--text-muted);
+  }
+  .h-val {
+    font-family: monospace;
+    color: #fff;
+    font-size: 15px;
+    font-weight: bold;
+    letter-spacing: 0.04em;
+  }
+
+  .hint {
+    font-size: 12px;
+    color: var(--text-muted);
+    line-height: 1.6;
+    min-height: 36px;
+  }
+
+  .result-block {
+    background: rgba(0,0,0,0.3);
+    border-radius: 6px;
+    padding: 10px 12px;
+    font-family: monospace;
+    font-size: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .result-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 6px;
+  }
+  .result-label { color: var(--text-muted); flex-shrink: 0; }
+  .result-val   { font-weight: bold; text-align: right; }
+
+  .mse-block {
+    background: rgba(0,0,0,0.3);
+    border-radius: 6px;
+    padding: 10px 12px;
+    font-family: monospace;
+    font-size: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+  .legend-line {
+    width: 20px;
+    height: 3px;
+    border-radius: 2px;
+    flex-shrink: 0;
+  }
+
+  hr { border: none; border-top: 1px solid var(--border); }
+
+  @media (max-width: 600px) {
+    html, body { flex-direction: column; }
+    #sidebar {
+      width: 100%; height: auto; max-height: 50vh;
+      border-right: none; border-bottom: 1px solid var(--panel-border);
+    }
+    #plot { height: 50vh; }
+  }
+</style>
+</head>
+<body>
+
+<div id="sidebar">
+  <div style="font-size:1.1em;font-weight:bold;color:#fff;">Numerical Differentiation</div>
+  <button id="newFuncBtn" style="width:100%">New Function</button>
+
+  <div class="func-display" id="funcDisplay">f(x) = …</div>
+
+  <hr>
+
+  <div class="section-label">Step Size h</div>
+  <div class="h-row">
+    <span>h =</span>
+    <span class="h-val" id="hVal">2.000</span>
+  </div>
+  <input type="range" id="hSlider" min="0.001" max="3" step="0.001" value="2">
+
+  <div class="hint" id="hint">Click on the canvas to place the evaluation point x₀.</div>
+
+  <hr>
+
+  <div class="section-label">Derivative at x₀</div>
+  <div class="result-block">
+    <div class="result-row">
+      <span class="result-label">x₀</span>
+      <span class="result-val" id="resX0" style="color:#ddd">—</span>
+    </div>
+    <div class="result-row">
+      <span class="result-label" style="color:#FFD93D">Forward</span>
+      <span class="result-val" id="resFwd" style="color:#FFD93D">—</span>
+    </div>
+    <div class="result-row">
+      <span class="result-label" style="color:#FF6B6B">Backward</span>
+      <span class="result-val" id="resBwd" style="color:#FF6B6B">—</span>
+    </div>
+    <div class="result-row">
+      <span class="result-label" style="color:#4D96FF">Central</span>
+      <span class="result-val" id="resCen" style="color:#4D96FF">—</span>
+    </div>
+    <div class="result-row">
+      <span class="result-label" style="color:#6BCB77">Exact f′</span>
+      <span class="result-val" id="resExact" style="color:#6BCB77">—</span>
+    </div>
+  </div>
+
+  <hr>
+
+  <div class="section-label">MSE at x₀ ± {1,2,3,4,5}</div>
+  <div class="mse-block">
+    <div class="result-row">
+      <span style="color:#FFD93D">Forward</span>
+      <span style="color:#FFD93D;font-weight:bold" id="mseFwd">—</span>
+    </div>
+    <div class="result-row">
+      <span style="color:#FF6B6B">Backward</span>
+      <span style="color:#FF6B6B;font-weight:bold" id="mseBwd">—</span>
+    </div>
+    <div class="result-row">
+      <span style="color:#4D96FF">Central</span>
+      <span style="color:#4D96FF;font-weight:bold" id="mseCen">—</span>
+    </div>
+  </div>
+
+  <hr>
+
+  <div class="section-label">Legend</div>
+  <div style="display:flex;flex-direction:column;gap:6px;">
+    <div class="legend-item"><div class="legend-line" style="background:#ddd"></div>f(x)</div>
+    <div class="legend-item"><div class="legend-line" style="background:#6BCB77"></div>f′(x) exact</div>
+    <div class="legend-item"><div class="legend-line" style="background:#FFD93D"></div>Forward difference</div>
+    <div class="legend-item"><div class="legend-line" style="background:#FF6B6B"></div>Backward difference</div>
+    <div class="legend-item"><div class="legend-line" style="background:#4D96FF"></div>Central difference</div>
+  </div>
+</div>
+
+<div id="plot">
+  <canvas id="canvas"></canvas>
+</div>
+
+<a href="/" class="nav-home">&#8592; Home</a>
+
+<script>
+// ── Canvas setup ──────────────────────────────────────────────────────────────
+const canvas  = document.getElementById('canvas');
+const ctx     = canvas.getContext('2d');
+const plotDiv = document.getElementById('plot');
+
+function resize() {
+  canvas.width  = plotDiv.offsetWidth;
+  canvas.height = plotDiv.offsetHeight;
+  draw();
+}
+window.addEventListener('resize', resize);
+
+// ── View ──────────────────────────────────────────────────────────────────────
+const VIEW = { xMin: -7, xMax: 7, yMin: -10, yMax: 10 };
+
+function setupView() {
+  let lo = Infinity, hi = -Infinity;
+  for (let x = VIEW.xMin; x <= VIEW.xMax; x += 0.05) {
+    const y = fn(x), dy = dfn(x);
+    if (isFinite(y))  { lo = Math.min(lo, y);  hi = Math.max(hi, y); }
+    if (isFinite(dy)) { lo = Math.min(lo, dy); hi = Math.max(hi, dy); }
+  }
+  const span = hi - lo;
+  const pad  = Math.max(span * 0.18, 1.5);
+  VIEW.yMin = lo - pad;
+  VIEW.yMax = hi + pad;
+}
+
+const mapX  = x  => (x - VIEW.xMin) / (VIEW.xMax - VIEW.xMin) * canvas.width;
+const mapY  = y  => canvas.height - (y - VIEW.yMin) / (VIEW.yMax - VIEW.yMin) * canvas.height;
+const umapX = px => VIEW.xMin + (px / canvas.width) * (VIEW.xMax - VIEW.xMin);
+
+// ── Function generation ───────────────────────────────────────────────────────
+let fn, dfn;
+
+function rnd(a, b) { return a + Math.random() * (b - a); }
+
+function fmtC(v, first) {
+  const mag = Math.abs(v);
+  const s   = mag < 1e-10 ? '0' : mag.toFixed(2).replace(/\.?0+$/, '');
+  if (first) return (v < 0 ? '-' : '') + s;
+  if (mag < 1e-10) return '';
+  return v < 0 ? ' - ' + s : ' + ' + s;
+}
+
+function genFunction() {
+  // Always cubic with roots in [-4, 4] so derivative is interesting everywhere
+  const r1 = rnd(-4, -0.5);
+  const r2 = rnd(-1, 1);
+  const r3 = rnd(0.5, 4);
+  const a  = (Math.random() < 0.5 ? 1 : -1) * rnd(0.15, 0.4);
+
+  // f(x) = a(x-r1)(x-r2)(x-r3)
+  // Expand: a*(x³ - (r1+r2+r3)x² + (r1r2+r1r3+r2r3)x - r1r2r3)
+  const c3 = a;
+  const c2 = -a * (r1 + r2 + r3);
+  const c1 =  a * (r1*r2 + r1*r3 + r2*r3);
+  const c0 = -a * r1 * r2 * r3;
+
+  const d2 = 3 * c3;
+  const d1 = 2 * c2;
+  const d0 = c1;
+
+  fn  = x => c3*x*x*x + c2*x*x + c1*x + c0;
+  dfn = x => d2*x*x   + d1*x   + d0;
+
+  const expr  = `${fmtC(c3,true)}x³${fmtC(c2,false)}x²${fmtC(c1,false)}x${fmtC(c0,false)}`;
+  const dExpr = `${fmtC(d2,true)}x²${fmtC(d1,false)}x${fmtC(d0,false)}`;
+
+  document.getElementById('funcDisplay').innerHTML =
+    `f(x) = ${expr}<br>f′(x) = ${dExpr}`;
+}
+
+function newFunction() {
+  genFunction();
+  setupView();
+  x0 = null;
+  clearResults();
+  draw();
+}
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let x0 = null;
+let h  = 2.0;
+
+// h slider uses log₁₀ scale so that small values get fine-grained control
+const hSlider = document.getElementById('hSlider');
+const hValEl  = document.getElementById('hVal');
+
+hSlider.addEventListener('input', () => {
+  h = +hSlider.value;
+  hValEl.textContent = h.toFixed(3);
+  updateResults();
+  draw();
+});
+
+// ── Results ───────────────────────────────────────────────────────────────────
+function clearResults() {
+  ['resX0','resFwd','resBwd','resCen','resExact','mseFwd','mseBwd','mseCen'].forEach(id => {
+    document.getElementById(id).textContent = '—';
+  });
+  document.getElementById('hint').textContent = 'Click on the canvas to place the evaluation point x₀.';
+}
+
+function fmt6(v) {
+  if (!isFinite(v)) return 'n/a';
+  const a = Math.abs(v);
+  return a < 1e-4 || a >= 1e6 ? v.toExponential(4) : v.toFixed(5);
+}
+
+function updateResults() {
+  if (x0 === null || !fn) return;
+
+  const fwd   = (fn(x0 + h) - fn(x0))         / h;
+  const bwd   = (fn(x0) - fn(x0 - h))         / h;
+  const cen   = (fn(x0 + h) - fn(x0 - h))     / (2 * h);
+  const exact = dfn(x0);
+
+  document.getElementById('resX0').textContent    = x0.toFixed(4);
+  document.getElementById('resFwd').textContent   = fmt6(fwd);
+  document.getElementById('resBwd').textContent   = fmt6(bwd);
+  document.getElementById('resCen').textContent   = fmt6(cen);
+  document.getElementById('resExact').textContent = fmt6(exact);
+
+  // MSE at x₀ ± {1, 2, 3, 4, 5}  (10 evaluation points)
+  const offsets = [-5, -4, -3, -2, -1, 1, 2, 3, 4, 5];
+  let mF = 0, mB = 0, mC = 0;
+  offsets.forEach(d => {
+    const xi = x0 + d;
+    const ef = (fn(xi+h) - fn(xi))         / h      - dfn(xi);
+    const eb = (fn(xi) - fn(xi-h))         / h      - dfn(xi);
+    const ec = (fn(xi+h) - fn(xi-h))       / (2*h)  - dfn(xi);
+    mF += ef*ef; mB += eb*eb; mC += ec*ec;
+  });
+  const n = offsets.length;
+  document.getElementById('mseFwd').textContent = (mF/n).toExponential(3);
+  document.getElementById('mseBwd').textContent = (mB/n).toExponential(3);
+  document.getElementById('mseCen').textContent = (mC/n).toExponential(3);
+}
+
+// ── Canvas interaction ────────────────────────────────────────────────────────
+canvas.addEventListener('click', e => {
+  if (!fn) return;
+  const rect = canvas.getBoundingClientRect();
+  const px   = e.clientX - rect.left;
+  x0 = Math.max(VIEW.xMin, Math.min(VIEW.xMax, umapX(px)));
+  document.getElementById('hint').textContent =
+    `x₀ = ${x0.toFixed(3)} — drag the h slider to see live updates`;
+  updateResults();
+  draw();
+});
+
+// ── Drawing ───────────────────────────────────────────────────────────────────
+const C = {
+  func:  '#dddddd',
+  exact: '#6BCB77',
+  fwd:   '#FFD93D',
+  bwd:   '#FF6B6B',
+  cen:   '#4D96FF',
+  axis:  'rgba(255,255,255,0.3)',
+  grid:  'rgba(255,255,255,0.06)',
+};
+
+function draw() {
+  if (!fn) return;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  drawGrid();
+  drawAxes();
+  // Only f(x) until a point is selected
+  drawCurve(x => fn(x), C.func, 2.8, 1.0);
+  // Evaluation geometry (tangent lines + stencil points)
+  if (x0 !== null) drawEval();
+}
+
+function drawGrid() {
+  ctx.strokeStyle = C.grid;
+  ctx.lineWidth = 1;
+  for (let x = Math.ceil(VIEW.xMin); x <= VIEW.xMax; x++) {
+    ctx.beginPath(); ctx.moveTo(mapX(x), 0); ctx.lineTo(mapX(x), canvas.height); ctx.stroke();
+  }
+  const yRange = VIEW.yMax - VIEW.yMin;
+  if (yRange <= 0) return;
+  const step = Math.pow(10, Math.floor(Math.log10(yRange / 5)));
+  for (let y = Math.ceil(VIEW.yMin / step) * step; y <= VIEW.yMax + step; y += step) {
+    ctx.beginPath(); ctx.moveTo(0, mapY(y)); ctx.lineTo(canvas.width, mapY(y)); ctx.stroke();
+  }
+}
+
+function drawAxes() {
+  ctx.strokeStyle = C.axis;
+  ctx.lineWidth = 1.5;
+  if (VIEW.yMin <= 0 && VIEW.yMax >= 0) {
+    ctx.beginPath(); ctx.moveTo(0, mapY(0)); ctx.lineTo(canvas.width, mapY(0)); ctx.stroke();
+  }
+  if (VIEW.xMin <= 0 && VIEW.xMax >= 0) {
+    ctx.beginPath(); ctx.moveTo(mapX(0), 0); ctx.lineTo(mapX(0), canvas.height); ctx.stroke();
+  }
+  ctx.fillStyle = 'rgba(255,255,255,0.3)';
+  ctx.font = '11px Arial';
+  ctx.textAlign = 'center';
+  const yBase = Math.max(Math.min(mapY(0) + 14, canvas.height - 6), 14);
+  for (let x = Math.ceil(VIEW.xMin); x <= VIEW.xMax; x++) {
+    if (x === 0) continue;
+    ctx.fillText(x, mapX(x), yBase);
+  }
+}
+
+function drawCurve(f, color, lw, alpha) {
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth   = lw;
+  ctx.globalAlpha = alpha;
+  ctx.beginPath();
+  let started = false;
+  for (let px = 0; px <= canvas.width; px += 2) {
+    const y = f(umapX(px));
+    if (!isFinite(y) || Math.abs(y) > 1e7) { started = false; continue; }
+    const py = mapY(y);
+    if (!started) { ctx.moveTo(px, py); started = true; }
+    else ctx.lineTo(px, py);
+  }
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawEval() {
+  const y0 = fn(x0);
+  if (!isFinite(y0)) return;
+
+  // Vertical dashed guide at x₀
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+  ctx.lineWidth   = 1;
+  ctx.setLineDash([5, 5]);
+  ctx.beginPath(); ctx.moveTo(mapX(x0), 0); ctx.lineTo(mapX(x0), canvas.height); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
+
+  // Stencil points on f(x): x₀−h, x₀, x₀+h
+  [[x0 - h, C.bwd], [x0 + h, C.fwd], [x0, '#fff']].forEach(([xi, col]) => {
+    const yi = fn(xi);
+    if (!isFinite(yi)) return;
+    ctx.beginPath();
+    ctx.arc(mapX(xi), mapY(yi), xi === x0 ? 7 : 5, 0, Math.PI * 2);
+    ctx.fillStyle   = col;
+    ctx.fill();
+    ctx.strokeStyle = '#111';
+    ctx.lineWidth   = 1.5;
+    ctx.stroke();
+  });
+
+  // Full-canvas tangent lines through (x₀, f(x₀)) for each method
+  const methods = [
+    { slope: (fn(x0+h) - fn(x0))        / h,     color: C.fwd   },
+    { slope: (fn(x0) - fn(x0-h))        / h,     color: C.bwd   },
+    { slope: (fn(x0+h) - fn(x0-h))      / (2*h), color: C.cen   },
+    { slope: dfn(x0),                             color: C.exact },
+  ];
+
+  methods.forEach(({ slope, color }) => {
+    if (!isFinite(slope)) return;
+    // y = y0 + slope * (x - x0), evaluated at the canvas left and right edges
+    const yLeft  = y0 + slope * (VIEW.xMin - x0);
+    const yRight = y0 + slope * (VIEW.xMax - x0);
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineWidth   = 2;
+    ctx.globalAlpha = 0.85;
+    ctx.beginPath();
+    ctx.moveTo(mapX(VIEW.xMin), mapY(yLeft));
+    ctx.lineTo(mapX(VIEW.xMax), mapY(yRight));
+    ctx.stroke();
+    ctx.restore();
+  });
+
+  // Re-draw the center point on top so it's not obscured
+  ctx.beginPath();
+  ctx.arc(mapX(x0), mapY(y0), 7, 0, Math.PI * 2);
+  ctx.fillStyle   = '#fff';
+  ctx.fill();
+  ctx.strokeStyle = '#222';
+  ctx.lineWidth   = 2;
+  ctx.stroke();
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+document.getElementById('newFuncBtn').addEventListener('click', newFunction);
+
+hSlider.value = '2';
+hValEl.textContent = '2.000';
+
+resize();
+newFunction();
+</script>
+</body>
+</html>
