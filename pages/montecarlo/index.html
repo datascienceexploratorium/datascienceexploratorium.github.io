@@ -1,0 +1,791 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Monte Carlo Area Estimation</title>
+  <link rel="stylesheet" href="../../assets/shared.css">
+  <style>
+    body { display: flex; height: 100vh; overflow: hidden; }
+
+    #controls {
+      width: 270px;
+      flex-shrink: 0;
+      height: 100vh;
+      overflow-y: auto;
+      background: #1c1c1c;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      border-right: 1px solid rgba(255,255,255,0.1);
+      z-index: 10;
+    }
+
+    #controls h2 {
+      font-size: 16px;
+      font-weight: 700;
+      color: #fff;
+      margin: 0;
+    }
+
+    .ctrl-label {
+      font-size: 11px;
+      color: rgba(255,255,255,0.5);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 4px;
+    }
+
+    .ctrl-group { display: flex; flex-direction: column; gap: 4px; }
+
+    select {
+      background: rgba(0,0,0,0.35);
+      border: 1px solid rgba(255,255,255,0.2);
+      color: #eee;
+      border-radius: 6px;
+      padding: 7px 10px;
+      font-size: 13px;
+      font-family: inherit;
+      cursor: pointer;
+    }
+    select:focus { outline: none; border-color: var(--color-green); }
+
+    .speed-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .speed-row span {
+      font-size: 12px;
+      color: #eee;
+      min-width: 52px;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .btn-row { display: flex; gap: 8px; }
+    .btn-row button { flex: 1; }
+
+    #btnDraw { display: none; }
+
+    .divider {
+      border: none;
+      border-top: 1px solid rgba(255,255,255,0.12);
+      margin: 0;
+    }
+
+    .stat-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .stat-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+    }
+    .stat-label { font-size: 12px; color: rgba(255,255,255,0.5); }
+    .stat-value { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
+    #statN       { color: var(--color-yellow); }
+    #statEst     { color: var(--color-green); }
+    #statTrue    { color: rgba(255,255,255,0.6); font-size: 15px; }
+    #statErr     { color: var(--color-red); }
+    #statPi      { color: var(--color-blue); }
+    #statPiErr   { color: var(--color-red); font-size: 15px; }
+
+    .legend {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .legend-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: rgba(255,255,255,0.6);
+    }
+    .swatch {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .swatch-green { background: var(--color-green); }
+    .swatch-red   { background: var(--color-red); }
+
+    .hint-text {
+      font-size: 11px;
+      color: rgba(255,255,255,0.35);
+      line-height: 1.6;
+    }
+
+    #canvas-container {
+      flex-grow: 1;
+      position: relative;
+      overflow: hidden;
+    }
+    canvas { display: block; width: 100%; height: 100%; }
+
+    #draw-overlay {
+      position: absolute;
+      top: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0,0,0,0.75);
+      border: 1px solid rgba(255,217,61,0.5);
+      border-radius: 8px;
+      padding: 8px 18px;
+      font-size: 12px;
+      color: rgba(255,217,61,0.9);
+      pointer-events: none;
+      white-space: nowrap;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+
+<div id="controls">
+  <h2>Monte Carlo Area</h2>
+
+  <div class="ctrl-group">
+    <div class="ctrl-label">Shape</div>
+    <select id="shapeSelect">
+      <option value="quartercircle">Quarter Circle (estimate π)</option>
+      <option value="fullcircle">Full Circle</option>
+      <option value="triangle">Triangle</option>
+      <option value="pentagon">Pentagon</option>
+      <option value="star">Five-Pointed Star</option>
+      <option value="custom">Custom Shape</option>
+    </select>
+  </div>
+
+  <div class="ctrl-group">
+    <div class="ctrl-label">Speed (dots / frame)</div>
+    <div class="speed-row">
+      <input type="range" id="speedSlider" min="0" max="100" value="0" step="1">
+      <span id="speedVal">1</span>
+    </div>
+  </div>
+
+  <div class="btn-row">
+    <button id="btnStart">Start</button>
+    <button id="btnReset">Reset</button>
+  </div>
+  <button id="btnDraw">Draw Shape</button>
+
+  <hr class="divider">
+
+  <div class="stat-grid">
+    <div class="stat-row">
+      <span class="stat-label">Samples (N)</span>
+      <span class="stat-value" id="statN">0</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">Est. Area</span>
+      <span class="stat-value" id="statEst">—</span>
+    </div>
+    <div class="stat-row" id="rowTrue">
+      <span class="stat-label">True Area</span>
+      <span class="stat-value" id="statTrue">—</span>
+    </div>
+    <div class="stat-row" id="rowErr">
+      <span class="stat-label">Area Error</span>
+      <span class="stat-value" id="statErr">—</span>
+    </div>
+    <div class="stat-row" id="rowPi">
+      <span class="stat-label">π estimate</span>
+      <span class="stat-value" id="statPi">—</span>
+    </div>
+    <div class="stat-row" id="rowPiErr">
+      <span class="stat-label">π error</span>
+      <span class="stat-value" id="statPiErr">—</span>
+    </div>
+  </div>
+
+  <hr class="divider">
+
+  <div class="legend">
+    <div class="legend-row"><div class="swatch swatch-green"></div>Inside shape</div>
+    <div class="legend-row"><div class="swatch swatch-red"></div>Outside shape</div>
+  </div>
+
+  <div class="hint-text" id="hintText">
+    Random dots fall in the unit square. The fraction landing inside the shape estimates its area.
+  </div>
+</div>
+
+<div id="canvas-container">
+  <canvas id="canvas"></canvas>
+  <div id="draw-overlay">Hold and drag to draw · Release to finish</div>
+</div>
+
+<script>
+(function () {
+  const canvas     = document.getElementById('canvas');
+  const ctx        = canvas.getContext('2d');
+  const container  = document.getElementById('canvas-container');
+
+  const shapeSelect = document.getElementById('shapeSelect');
+  const speedSlider = document.getElementById('speedSlider');
+  const speedValEl  = document.getElementById('speedVal');
+  const btnStart    = document.getElementById('btnStart');
+  const btnReset    = document.getElementById('btnReset');
+  const btnDraw     = document.getElementById('btnDraw');
+  const drawOverlay = document.getElementById('draw-overlay');
+  const statN       = document.getElementById('statN');
+  const statEst     = document.getElementById('statEst');
+  const statTrue    = document.getElementById('statTrue');
+  const statErr     = document.getElementById('statErr');
+  const statPi      = document.getElementById('statPi');
+  const statPiErr   = document.getElementById('statPiErr');
+  const rowTrue     = document.getElementById('rowTrue');
+  const rowErr      = document.getElementById('rowErr');
+  const rowPi       = document.getElementById('rowPi');
+  const rowPiErr    = document.getElementById('rowPiErr');
+  const hintText    = document.getElementById('hintText');
+
+  // ── Shape definitions ────────────────────────────────────
+  function genCirclePoly(cx, cy, r, n) {
+    const pts = [];
+    for (let i = 0; i < n; i++) {
+      const a = (2 * Math.PI * i) / n;
+      pts.push({ x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) });
+    }
+    return pts;
+  }
+
+  function genRegPoly(sides, cx, cy, r, angleOffset) {
+    const pts = [];
+    for (let i = 0; i < sides; i++) {
+      const a = angleOffset + (2 * Math.PI * i) / sides;
+      pts.push({ x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) });
+    }
+    return pts;
+  }
+
+  function genStar(points, cx, cy, rOuter, rInner, angleOffset) {
+    const pts = [];
+    for (let i = 0; i < points * 2; i++) {
+      const r = i % 2 === 0 ? rOuter : rInner;
+      const a = angleOffset + (Math.PI * i) / points;
+      pts.push({ x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) });
+    }
+    return pts;
+  }
+
+  // Regular polygon area: (n/2)*r²*sin(2π/n)
+  function regPolyArea(n, r) { return (n / 2) * r * r * Math.sin(2 * Math.PI / n); }
+
+  // Star area (5-pointed): computed analytically
+  function starArea(n, rO, rI) {
+    const outer = regPolyArea(n, rO);
+    const inner = regPolyArea(n, rI);
+    // Approximate: outer - inner * (n triangles adjustment) — just use
+    // exact shoelace on the generated vertices
+    const poly = genStar(n, 0.5, 0.5, rO, rI, -Math.PI / 2);
+    return Math.abs(shoelace(poly));
+  }
+
+  function shoelace(poly) {
+    let area = 0;
+    const n = poly.length;
+    for (let i = 0, j = n - 1; i < n; j = i++) {
+      area += (poly[j].x + poly[i].x) * (poly[j].y - poly[i].y);
+    }
+    return area / 2;
+  }
+
+  const FULL_CIRCLE_R = 0.46;
+  const PENT_R        = 0.44;
+  const STAR_OUTER    = 0.44;
+  const STAR_INNER    = 0.18;
+
+  const SHAPES = {
+    quartercircle: {
+      label: 'Quarter Circle',
+      trueArea: Math.PI / 4,
+      showPi: true,
+      poly: null,   // special rendering
+      hint: 'A quarter circle of radius 1 in the unit square. Area = π/4 ≈ 0.7854, so 4×(inside/total) ≈ π.',
+    },
+    fullcircle: {
+      label: 'Full Circle',
+      trueArea: Math.PI * FULL_CIRCLE_R * FULL_CIRCLE_R,
+      showPi: false,
+      poly: genCirclePoly(0.5, 0.5, FULL_CIRCLE_R, 128),
+      hint: `Circle centered at (0.5, 0.5) with r = ${FULL_CIRCLE_R}. True area = πr² ≈ ${(Math.PI * FULL_CIRCLE_R * FULL_CIRCLE_R).toFixed(4)}.`,
+    },
+    triangle: {
+      label: 'Triangle',
+      trueArea: 0.5 * 0.8 * 0.8,
+      showPi: false,
+      poly: [{ x: 0.1, y: 0.1 }, { x: 0.9, y: 0.1 }, { x: 0.5, y: 0.9 }],
+      hint: 'Isoceles triangle with base 0.8 and height 0.8. True area = ½ × base × height = 0.32.',
+    },
+    pentagon: {
+      label: 'Pentagon',
+      trueArea: regPolyArea(5, PENT_R),
+      showPi: false,
+      poly: genRegPoly(5, 0.5, 0.5, PENT_R, -Math.PI / 2),
+      hint: `Regular pentagon centered at (0.5, 0.5) with circumradius ${PENT_R}. True area ≈ ${regPolyArea(5, PENT_R).toFixed(4)}.`,
+    },
+    star: {
+      label: 'Five-Pointed Star',
+      trueArea: starArea(5, STAR_OUTER, STAR_INNER),
+      showPi: false,
+      poly: genStar(5, 0.5, 0.5, STAR_OUTER, STAR_INNER, -Math.PI / 2),
+      hint: `Five-pointed star with outer radius ${STAR_OUTER} and inner radius ${STAR_INNER}.`,
+    },
+    custom: {
+      label: 'Custom Shape',
+      trueArea: null,
+      showPi: false,
+      poly: null,
+      hint: 'Hold and drag on the canvas to draw a freeform shape. Double-click or release to finish.',
+    },
+  };
+
+  // ── State ────────────────────────────────────────────────
+  let shapeId     = 'quartercircle';
+  let simRunning  = false;
+  let animId      = null;
+  let totalN      = 0;
+  let insideN     = 0;
+  let drawingMode = false;
+  let isMouseDown = false;
+  let customPoly  = [];   // freeform drawn polygon in unit coords
+  let lastDrawPt  = null; // last added draw point (canvas px) for throttling
+
+  const MAX_DOTS = 25000;
+  let dots = [];
+
+  // Canvas sim-square geometry
+  const PAD = 48;
+  let simX = 0, simY = 0, simSz = 0;
+
+  // ── Speed (log scale) ────────────────────────────────────
+  function sliderToSpeed(v) {
+    // v in [0,100] → speed in [1, 100000] (log scale)
+    return Math.max(1, Math.round(Math.pow(10, v * 5 / 100)));
+  }
+
+  function formatSpeed(n) {
+    if (n >= 1000) return (n / 1000).toFixed(n < 10000 ? 1 : 0) + 'k';
+    return n.toString();
+  }
+
+  // ── Coordinate helpers ───────────────────────────────────
+  function unitToCanvas(ux, uy) {
+    return { x: simX + ux * simSz, y: simY + (1 - uy) * simSz };
+  }
+  function canvasToUnit(cx, cy) {
+    return {
+      x: Math.max(0, Math.min(1, (cx - simX) / simSz)),
+      y: Math.max(0, Math.min(1, 1 - (cy - simY) / simSz)),
+    };
+  }
+
+  // ── Point-in-shape ───────────────────────────────────────
+  function inQuarterCircle(ux, uy) { return ux * ux + uy * uy <= 1; }
+
+  function inPolygon(ux, uy, poly) {
+    let inside = false;
+    const n = poly.length;
+    for (let i = 0, j = n - 1; i < n; j = i++) {
+      const xi = poly[i].x, yi = poly[i].y;
+      const xj = poly[j].x, yj = poly[j].y;
+      if (((yi > uy) !== (yj > uy)) &&
+          (ux < (xj - xi) * (uy - yi) / (yj - yi) + xi)) {
+        inside = !inside;
+      }
+    }
+    return inside;
+  }
+
+  function currentPoly() {
+    return shapeId === 'custom' ? customPoly : SHAPES[shapeId].poly;
+  }
+
+  function testPoint(ux, uy) {
+    if (shapeId === 'quartercircle') return inQuarterCircle(ux, uy);
+    const poly = currentPoly();
+    return poly && poly.length >= 3 && inPolygon(ux, uy, poly);
+  }
+
+  // ── Simulation ───────────────────────────────────────────
+  function addDots(count) {
+    for (let i = 0; i < count; i++) {
+      const ux = Math.random();
+      const uy = Math.random();
+      const inside = testPoint(ux, uy);
+      totalN++;
+      if (inside) insideN++;
+      if (dots.length < MAX_DOTS) {
+        const p = unitToCanvas(ux, uy);
+        dots.push({ x: p.x, y: p.y, inside });
+      }
+    }
+  }
+
+  // ── Rendering ────────────────────────────────────────────
+  function render() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    drawGrid();
+    drawShape();
+    drawDots();
+    if (drawingMode) drawCustomInProgress();
+    updateStats();
+  }
+
+  function drawGrid() {
+    ctx.fillStyle = 'rgba(255,255,255,0.03)';
+    ctx.fillRect(simX, simY, simSz, simSz);
+    ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(simX, simY, simSz, simSz);
+
+    ctx.font = '11px Arial';
+    const ticks = [0, 0.25, 0.5, 0.75, 1.0];
+
+    ctx.fillStyle    = 'rgba(255,255,255,0.4)';
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'top';
+    for (const v of ticks) {
+      const p = unitToCanvas(v, 0);
+      ctx.fillText(v === 1 ? '1' : v.toString(), p.x, p.y + 8);
+      ctx.strokeStyle = 'rgba(255,255,255,0.08)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x, p.y + 5); ctx.stroke();
+      if (v > 0 && v < 1) {
+        ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+        ctx.beginPath(); ctx.moveTo(p.x, simY); ctx.lineTo(p.x, simY + simSz); ctx.stroke();
+      }
+    }
+    ctx.textAlign    = 'right';
+    ctx.textBaseline = 'middle';
+    for (const v of ticks) {
+      const p = unitToCanvas(0, v);
+      if (v > 0) ctx.fillText(v === 1 ? '1' : v.toString(), p.x - 8, p.y);
+      ctx.strokeStyle = 'rgba(255,255,255,0.08)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x - 5, p.y); ctx.stroke();
+      if (v > 0 && v < 1) {
+        ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+        ctx.beginPath(); ctx.moveTo(simX, p.y); ctx.lineTo(simX + simSz, p.y); ctx.stroke();
+      }
+    }
+  }
+
+  function drawShape() {
+    if (shapeId === 'quartercircle') {
+      const origin = unitToCanvas(0, 0);
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(origin.x, origin.y);
+      ctx.arc(origin.x, origin.y, simSz, 0, -Math.PI / 2, true);
+      ctx.closePath();
+      ctx.fillStyle   = 'rgba(107,203,119,0.1)';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(107,203,119,0.85)';
+      ctx.lineWidth   = 2; ctx.stroke();
+      ctx.font = '13px Arial';
+      ctx.fillStyle    = 'rgba(107,203,119,0.7)';
+      ctx.textAlign    = 'center';
+      ctx.textBaseline = 'middle';
+      const lp = unitToCanvas(0.38, 0.62);
+      ctx.fillText('x² + y² ≤ 1', lp.x, lp.y);
+      ctx.restore();
+      return;
+    }
+
+    // Custom shape in drawing mode — handled by drawCustomInProgress
+    if (shapeId === 'custom' && drawingMode) return;
+
+    const poly = currentPoly();
+    if (!poly || poly.length < 3) return;
+
+    ctx.save();
+    ctx.beginPath();
+    const fp = unitToCanvas(poly[0].x, poly[0].y);
+    ctx.moveTo(fp.x, fp.y);
+    for (let i = 1; i < poly.length; i++) {
+      const p = unitToCanvas(poly[i].x, poly[i].y);
+      ctx.lineTo(p.x, p.y);
+    }
+    ctx.closePath();
+    const isCustom = shapeId === 'custom';
+    ctx.fillStyle   = isCustom ? 'rgba(77,150,255,0.13)'    : 'rgba(107,203,119,0.1)';
+    ctx.strokeStyle = isCustom ? 'rgba(77,150,255,0.9)'     : 'rgba(107,203,119,0.85)';
+    ctx.fill();
+    ctx.lineWidth = 2; ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawDots() {
+    if (!dots.length) return;
+    const r = Math.max(1.5, simSz / 450);
+    ctx.save();
+    ctx.fillStyle = 'rgba(107,203,119,0.75)';
+    ctx.beginPath();
+    for (const d of dots) {
+      if (d.inside) { ctx.moveTo(d.x + r, d.y); ctx.arc(d.x, d.y, r, 0, Math.PI * 2); }
+    }
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255,107,107,0.5)';
+    ctx.beginPath();
+    for (const d of dots) {
+      if (!d.inside) { ctx.moveTo(d.x + r, d.y); ctx.arc(d.x, d.y, r, 0, Math.PI * 2); }
+    }
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawCustomInProgress() {
+    if (!customPoly.length) return;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255,217,61,0.9)';
+    ctx.lineWidth   = 2;
+    ctx.lineJoin    = 'round';
+    ctx.lineCap     = 'round';
+    ctx.beginPath();
+    const fp = unitToCanvas(customPoly[0].x, customPoly[0].y);
+    ctx.moveTo(fp.x, fp.y);
+    for (let i = 1; i < customPoly.length; i++) {
+      const p = unitToCanvas(customPoly[i].x, customPoly[i].y);
+      ctx.lineTo(p.x, p.y);
+    }
+    ctx.stroke();
+    // Dashed closing line back to start
+    if (customPoly.length >= 2) {
+      const last = unitToCanvas(customPoly[customPoly.length - 1].x, customPoly[customPoly.length - 1].y);
+      ctx.setLineDash([5, 5]);
+      ctx.strokeStyle = 'rgba(255,217,61,0.4)';
+      ctx.beginPath();
+      ctx.moveTo(last.x, last.y);
+      ctx.lineTo(fp.x, fp.y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    ctx.restore();
+  }
+
+  // ── Stats ────────────────────────────────────────────────
+  function updateStats() {
+    statN.textContent = totalN.toLocaleString();
+    const shape = SHAPES[shapeId];
+
+    if (totalN === 0) {
+      statEst.textContent   = '—';
+      statTrue.textContent  = shape.trueArea != null ? shape.trueArea.toFixed(5) : '—';
+      statErr.textContent   = '—';
+      statPi.textContent    = '—';
+      statPiErr.textContent = '—';
+      return;
+    }
+
+    const ratio = insideN / totalN;
+    statEst.textContent = ratio.toFixed(5);
+
+    if (shape.trueArea != null) {
+      statTrue.textContent = shape.trueArea.toFixed(5);
+      statErr.textContent  = Math.abs(ratio - shape.trueArea).toFixed(5);
+    }
+
+    if (shape.showPi) {
+      const estPi = ratio * 4;
+      statPi.textContent    = estPi.toFixed(5);
+      statPiErr.textContent = Math.abs(estPi - Math.PI).toFixed(5);
+    }
+  }
+
+  function applyShapeUI() {
+    const shape = SHAPES[shapeId];
+    const isCustom = shapeId === 'custom';
+    const hasTrueArea = shape.trueArea != null;
+
+    btnDraw.style.display  = isCustom ? 'block' : 'none';
+    rowTrue.style.display  = hasTrueArea  ? ''     : 'none';
+    rowErr.style.display   = hasTrueArea  ? ''     : 'none';
+    rowPi.style.display    = shape.showPi ? ''     : 'none';
+    rowPiErr.style.display = shape.showPi ? ''     : 'none';
+
+    hintText.textContent = shape.hint;
+
+    // Seed true area immediately
+    if (hasTrueArea) statTrue.textContent = shape.trueArea.toFixed(5);
+  }
+
+  // ── Animation loop ───────────────────────────────────────
+  function loop() {
+    const speed = sliderToSpeed(parseInt(speedSlider.value, 10));
+    addDots(speed);
+    render();
+    if (simRunning) animId = requestAnimationFrame(loop);
+  }
+
+  function stopSim() {
+    simRunning = false;
+    if (animId) { cancelAnimationFrame(animId); animId = null; }
+    btnStart.textContent = 'Start';
+  }
+
+  function resetSim() {
+    stopSim();
+    totalN = 0; insideN = 0; dots = [];
+  }
+
+  // ── Controls ─────────────────────────────────────────────
+  shapeSelect.addEventListener('change', () => {
+    shapeId = shapeSelect.value;
+    resetSim();
+    if (shapeId !== 'custom') {
+      drawingMode = false;
+      isMouseDown = false;
+      customPoly  = [];
+      canvas.style.cursor = 'default';
+      drawOverlay.style.display = 'none';
+      btnDraw.textContent = 'Draw Shape';
+    }
+    applyShapeUI();
+    render();
+  });
+
+  speedSlider.addEventListener('input', () => {
+    speedValEl.textContent = formatSpeed(sliderToSpeed(parseInt(speedSlider.value, 10)));
+  });
+
+  btnStart.addEventListener('click', () => {
+    if (drawingMode) return;
+    if (shapeId === 'custom' && customPoly.length < 3) {
+      flashMsg('Draw a shape first!');
+      return;
+    }
+    if (simRunning) {
+      stopSim();
+      btnStart.textContent = 'Resume';
+    } else {
+      simRunning = true;
+      btnStart.textContent = 'Pause';
+      animId = requestAnimationFrame(loop);
+    }
+  });
+
+  btnReset.addEventListener('click', () => { resetSim(); render(); });
+
+  btnDraw.addEventListener('click', () => {
+    if (drawingMode) {
+      cancelDraw();
+      return;
+    }
+    stopSim();
+    resetSim();
+    drawingMode = true;
+    customPoly  = [];
+    lastDrawPt  = null;
+    btnDraw.textContent = 'Cancel Drawing';
+    canvas.style.cursor = 'crosshair';
+    drawOverlay.style.display = 'block';
+    render();
+  });
+
+  function cancelDraw() {
+    drawingMode = false;
+    isMouseDown = false;
+    canvas.style.cursor = 'default';
+    drawOverlay.style.display = 'none';
+    btnDraw.textContent = customPoly.length >= 3 ? 'Redraw Shape' : 'Draw Shape';
+  }
+
+  function finishDraw() {
+    if (customPoly.length < 3) { cancelDraw(); return; }
+    // Shape is already closed implicitly (polygon); just exit drawing mode
+    drawingMode = false;
+    isMouseDown = false;
+    canvas.style.cursor = 'default';
+    drawOverlay.style.display = 'none';
+    btnDraw.textContent = 'Redraw Shape';
+    render();
+  }
+
+  // ── Freeform drawing ──────────────────────────────────────
+  function canvasCoords(e) {
+    const rect = canvas.getBoundingClientRect();
+    const sx   = canvas.width  / rect.width;
+    const sy   = canvas.height / rect.height;
+    return {
+      x: (e.clientX - rect.left) * sx,
+      y: (e.clientY - rect.top)  * sy,
+    };
+  }
+
+  canvas.addEventListener('mousedown', (e) => {
+    if (!drawingMode) return;
+    e.preventDefault();
+    isMouseDown = true;
+    customPoly  = [];
+    lastDrawPt  = null;
+    const { x: cx, y: cy } = canvasCoords(e);
+    const uv = canvasToUnit(cx, cy);
+    customPoly.push(uv);
+    lastDrawPt = { x: cx, y: cy };
+    render();
+  });
+
+  canvas.addEventListener('mousemove', (e) => {
+    if (!drawingMode || !isMouseDown) return;
+    const { x: cx, y: cy } = canvasCoords(e);
+    // Throttle: add point only if moved > 4px
+    if (lastDrawPt && Math.hypot(cx - lastDrawPt.x, cy - lastDrawPt.y) < 4) return;
+    customPoly.push(canvasToUnit(cx, cy));
+    lastDrawPt = { x: cx, y: cy };
+    render();
+  });
+
+  canvas.addEventListener('mouseup', (e) => {
+    if (!drawingMode || !isMouseDown) return;
+    isMouseDown = false;
+    finishDraw();
+  });
+
+  canvas.addEventListener('mouseleave', (e) => {
+    if (drawingMode && isMouseDown) {
+      isMouseDown = false;
+      finishDraw();
+    }
+  });
+
+  // ── Flash message ─────────────────────────────────────────
+  function flashMsg(msg) {
+    const prev = drawOverlay.textContent;
+    const wasShown = drawOverlay.style.display === 'block';
+    drawOverlay.textContent   = msg;
+    drawOverlay.style.display = 'block';
+    setTimeout(() => {
+      drawOverlay.textContent   = 'Hold and drag to draw · Release to finish';
+      drawOverlay.style.display = wasShown ? 'block' : 'none';
+    }, 2000);
+  }
+
+  // ── Resize ───────────────────────────────────────────────
+  function resize() {
+    canvas.width  = container.clientWidth;
+    canvas.height = container.clientHeight;
+    const avail = Math.min(canvas.width, canvas.height) - PAD * 2;
+    simSz = Math.max(80, avail);
+    simX  = Math.floor((canvas.width  - simSz) / 2);
+    simY  = Math.floor((canvas.height - simSz) / 2);
+    dots  = []; // drop cached px positions; counts remain
+    render();
+  }
+
+  window.addEventListener('resize', resize);
+
+  // ── Init ─────────────────────────────────────────────────
+  applyShapeUI();
+  resize();
+})();
+</script>
+
+<a href="/" class="nav-home">&#8592; Home</a>
+</body>
+</html>
