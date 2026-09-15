@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>KNN</title>
+<link rel="stylesheet" href="../../assets/shared.css">
+<style>
+  body {
+    overflow: hidden;
+  }
+  #controls {
+    position: fixed;
+    font-size: 18px;
+    top: 10px;
+    left: 10px;
+    border-radius: 12px;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    z-index: 10;
+    height: calc(100vh - 20px);
+    width: calc(30vw - 20px );
+    flex-shrink: 0;
+  }
+
+  #main-controls-grid {
+      display: grid;
+      grid-template-columns: 30% 70%;
+      gap: 10px;
+      width: 100%;
+      justify-content: center;
+      align-items: center;
+      flex-shrink: 0;
+  }
+
+  .color-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    align-items: center;
+  }
+
+  .color-box {
+    width: 100%;
+    max-width: 80px;
+    height: 35px;
+    border: 2px solid #fff;
+    cursor: pointer;
+    border-radius: 4px;
+  }
+  .color-box.selected {
+    box-shadow: 0 0 0 3px #6BCB77;
+  }
+  #green-color { background-color: #6BCB77; }
+  #purple-color { background-color: #845EC2; }
+
+  .ctrl-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    align-items: center;
+  }
+  .ctrl-buttons button {
+    width: 100%;
+    max-width: 180px;
+    height: 36px;
+    font-size: 16px;
+  }
+  canvas {
+    display: block;
+    position: absolute;
+    top: 0; left: 0;
+  }
+  #flash {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background: #fff;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.4s ease;
+    z-index: 20;
+  }
+  #canvas-container {
+    position: absolute;
+    border: 2px solid rgba(255,255,255,0.3);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  #bottom-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      flex-grow: 1;
+      overflow-y: auto;
+      width: 100%;
+      align-items: center;
+  }
+  #param-controls {
+    width: 95%;
+    background: rgba(255,255,255,0.1);
+    backdrop-filter: blur(10px);
+    border-radius: 12px;
+    padding: 10px 12px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+  .slider-row label {
+    font-size: 13px;
+    color: #ccc;
+    display: flex;
+    justify-content: space-between;
+  }
+  #summary-stats {
+    background: rgba(255,255,255,0.1);
+    backdrop-filter: blur(10px);
+    border-radius: 12px;
+    padding: 8px 12px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    color: #eee;
+    font-size: 15px;
+    text-align: center;
+    min-width: 250px;
+    width: 95%;
+    flex-shrink: 0;
+  }
+  #summary-stats p { margin: 2px 0; }
+  #vote-output {
+    max-height: none;
+    flex-grow: 1;
+    overflow-y: auto;
+    width: 95%;
+    text-align: center;
+    background: rgba(255,255,255,0.1);
+    backdrop-filter: blur(10px);
+    border-radius: 12px;
+    padding: 10px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  }
+  #vote-output h3 {
+    margin-bottom: 8px;
+    font-size: 1em;
+    color: #eee;
+  }
+  #vote-display {
+    background: #222;
+    padding: 10px;
+    border-radius: 8px;
+    min-height: 70px;
+    font-size: 0.9em;
+    color: #ccc;
+  }
+  .vote-bar-wrap {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 4px 0;
+  }
+  .vote-bar-label {
+    width: 46px;
+    text-align: right;
+    font-size: 0.85em;
+  }
+  .vote-bar-track {
+    flex-grow: 1;
+    height: 14px;
+    background: #333;
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .vote-bar-fill {
+    height: 100%;
+  }
+</style>
+</head>
+<body>
+  <div id="controls">
+    <div id="main-controls-grid">
+        <div class="color-stack">
+            <div class="color-box selected" id="green-color" data-color="green"></div>
+            <div class="color-box" id="purple-color" data-color="purple"></div>
+        </div>
+        <div class="ctrl-buttons">
+            <button id="fitModelBtn">Classify Space</button>
+            <button id="resetBtn">Reset</button>
+        </div>
+    </div>
+
+    <div id="param-controls">
+        <div class="slider-row">
+            <label>K (neighbors) <span id="kVal">5</span></label>
+            <input type="range" id="kSlider" min="1" max="25" step="2" value="5">
+        </div>
+    </div>
+
+    <div id="bottom-panel">
+        <div id="summary-stats">
+          <p id="error-display">Leave-One-Out Error: N/A</p>
+          <p id="status-display">Place points and click 'Classify Space'.</p>
+        </div>
+        <div id="vote-output">
+          <h3>Nearest-Neighbor Vote:</h3>
+          <div id="vote-display">Hover the space after classifying to see how each point's K nearest neighbors vote.</div>
+        </div>
+    </div>
+  </div>
+
+  <div id="canvas-container">
+    <canvas id="canvas"></canvas>
+  </div>
+  <div id="flash"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/p5@1.4.0/lib/p5.js"></script>
+  <script>
+
+let points = [];
+let selectedColor = 'green';
+const DOT_RADIUS = 6;
+const SPRAY_RADIUS = 15;
+const GREEN_COLOR = '#6BCB77';
+const PURPLE_COLOR = '#845EC2';
+
+let canvasContainer;
+let p5Instance;
+let W, H;
+
+let K = 5;
+const GRID_CELL = 10;
+const ROWS_PER_FRAME = 6;
+
+let grid = null;
+let gridCols = 0;
+let gridRows = 0;
+let isAnimating = false;
+let isFit = false;
+let animationTimeoutId = null;
+let currentRow = 0;
+
+let greenColorBox, purpleColorBox, fitModelBtn, resetBtn;
+let errorDisplay, statusDisplay, voteDisplay, flashEl, controls, bottomPanel;
+let kSlider, kVal;
+
+const s = (sketch) => {
+  sketch.setup = () => {
+    canvasContainer = document.getElementById('canvas-container');
+    if (!canvasContainer) return;
+    const canvas = sketch.createCanvas(canvasContainer.offsetWidth, canvasContainer.offsetHeight);
+    canvas.parent('canvas-container');
+    p5Instance = sketch;
+    W = sketch.width;
+    H = sketch.height;
+    sketch.background(30);
+    sketch.noStroke();
+  };
+
+  sketch.draw = () => {
+    sketch.background(30);
+
+    if (grid) {
+      drawGrid(sketch);
+    }
+
+    for (const p of points) {
+      sketch.noStroke();
+      sketch.fill(p.color === 'green' ? GREEN_COLOR : PURPLE_COLOR);
+      sketch.ellipse(p.x, p.y, DOT_RADIUS * 2, DOT_RADIUS * 2);
+    }
+
+    if (isFit && !isAnimating && sketch.mouseX > 0 && sketch.mouseX < W && sketch.mouseY > 0 && sketch.mouseY < H) {
+      drawHoverNeighbors(sketch);
+    } else if (!isFit || isAnimating) {
+      if (voteDisplay && voteDisplay.dataset.hovering === '1') {
+        voteDisplay.dataset.hovering = '0';
+        voteDisplay.innerHTML = "Hover the space after classifying to see how each point's K nearest neighbors vote.";
+      }
+    }
+  };
+
+  sketch.mousePressed = () => {
+    if (!isAnimating && sketch.mouseX > 0 && sketch.mouseX < W && sketch.mouseY > 0 && sketch.mouseY < H) {
+      const offsetX = sketch.random(-SPRAY_RADIUS, SPRAY_RADIUS);
+      const offsetY = sketch.random(-SPRAY_RADIUS, SPRAY_RADIUS);
+      points.push({ x: sketch.mouseX + offsetX, y: sketch.mouseY + offsetY, color: selectedColor });
+      if (isFit) resetVisualization(false);
+    }
+  };
+
+  sketch.mouseDragged = () => {
+    if (!isAnimating && sketch.mouseIsPressed && sketch.mouseX > 0 && sketch.mouseX < W && sketch.mouseY > 0 && sketch.mouseY < H) {
+      const lastPoint = points[points.length - 1];
+      if (!lastPoint || sketch.dist(sketch.mouseX, sketch.mouseY, lastPoint.x, lastPoint.y) > DOT_RADIUS * 2) {
+        const offsetX = sketch.random(-SPRAY_RADIUS, SPRAY_RADIUS);
+        const offsetY = sketch.random(-SPRAY_RADIUS, SPRAY_RADIUS);
+        points.push({ x: sketch.mouseX + offsetX, y: sketch.mouseY + offsetY, color: selectedColor });
+        if (isFit) resetVisualization(false);
+      }
+    }
+  };
+
+  sketch.windowResized = () => {
+    if (!controls || !bottomPanel || !canvasContainer || !p5Instance) return;
+    const margin = 10;
+    const controlsWidth = controls.offsetWidth + (margin * 2);
+    const newW = window.innerWidth - controlsWidth - margin;
+    const newH = window.innerHeight - (margin * 2);
+    canvasContainer.style.width = `${newW}px`;
+    canvasContainer.style.height = `${newH}px`;
+    canvasContainer.style.left = `${controls.offsetLeft + controls.offsetWidth + margin}px`;
+    canvasContainer.style.top = `${margin}px`;
+    p5Instance.resizeCanvas(newW, newH);
+    W = newW;
+    H = newH;
+    p5Instance.background(30);
+    p5Instance.redraw();
+    if (isFit) resetVisualization(false);
+  };
+};
+
+document.addEventListener('DOMContentLoaded', () => {
+  greenColorBox = document.getElementById('green-color');
+  purpleColorBox = document.getElementById('purple-color');
+  fitModelBtn = document.getElementById('fitModelBtn');
+  resetBtn = document.getElementById('resetBtn');
+  errorDisplay = document.getElementById('error-display');
+  statusDisplay = document.getElementById('status-display');
+  voteDisplay = document.getElementById('vote-display');
+  flashEl = document.getElementById('flash');
+  controls = document.getElementById('controls');
+  bottomPanel = document.getElementById('bottom-panel');
+  kSlider = document.getElementById('kSlider');
+  kVal = document.getElementById('kVal');
+
+  new p5(s);
+
+  greenColorBox.addEventListener('click', () => {
+    selectedColor = 'green';
+    greenColorBox.classList.add('selected');
+    purpleColorBox.classList.remove('selected');
+  });
+  purpleColorBox.addEventListener('click', () => {
+    selectedColor = 'purple';
+    purpleColorBox.classList.add('selected');
+    greenColorBox.classList.remove('selected');
+  });
+
+  kSlider.addEventListener('input', () => {
+    K = parseInt(kSlider.value, 10);
+    kVal.textContent = K;
+    if (isFit) resetVisualization(false);
+  });
+
+  fitModelBtn.addEventListener('click', () => {
+    if (isAnimating) return;
+    if (points.length === 0) {
+      alert('Please place some points first!');
+      return;
+    }
+    const hasGreen = points.some(p => p.color === 'green');
+    const hasPurple = points.some(p => p.color === 'purple');
+    if (!hasGreen || !hasPurple) {
+      alert('Please place dots of both green and purple colors to classify the space.');
+      return;
+    }
+    classifySpace();
+  });
+
+  resetBtn.addEventListener('click', () => resetVisualization(true));
+
+  setTimeout(() => {
+    window.dispatchEvent(new Event('resize'));
+  }, 100);
+});
+
+function dist2(x1, y1, x2, y2) {
+  const dx = x1 - x2, dy = y1 - y2;
+  return dx * dx + dy * dy;
+}
+
+function kNearest(x, y, excludeIdx, kCount) {
+  const dists = [];
+  for (let i = 0; i < points.length; i++) {
+    if (i === excludeIdx) continue;
+    dists.push({ i, d: dist2(x, y, points[i].x, points[i].y) });
+  }
+  dists.sort((a, b) => a.d - b.d);
+  return dists.slice(0, Math.min(kCount, dists.length));
+}
+
+function voteFromNeighbors(neighborEntries) {
+  let green = 0, purple = 0;
+  for (const e of neighborEntries) {
+    if (points[e.i].color === 'green') green++;
+    else purple++;
+  }
+  return { green, purple, winner: green >= purple ? 'green' : 'purple' };
+}
+
+function classifySpace() {
+  if (isAnimating) return;
+  isAnimating = true;
+  isFit = false;
+  fitModelBtn.disabled = true;
+  statusDisplay.textContent = 'Classifying...';
+
+  gridCols = Math.ceil(W / GRID_CELL);
+  gridRows = Math.ceil(H / GRID_CELL);
+  grid = new Array(gridCols * gridRows).fill(null);
+  currentRow = 0;
+
+  animateRows();
+}
+
+function animateRows() {
+  const rowsThisFrame = Math.min(ROWS_PER_FRAME, gridRows - currentRow);
+  let lastVote = null;
+
+  for (let r = 0; r < rowsThisFrame; r++) {
+    const gy = currentRow + r;
+    const cy = gy * GRID_CELL + GRID_CELL / 2;
+    for (let gx = 0; gx < gridCols; gx++) {
+      const cx = gx * GRID_CELL + GRID_CELL / 2;
+      const neighbors = kNearest(cx, cy, -1, K);
+      const vote = voteFromNeighbors(neighbors);
+      grid[gy * gridCols + gx] = vote.winner;
+      lastVote = vote;
+    }
+  }
+  currentRow += rowsThisFrame;
+
+  if (lastVote) {
+    updateVoteDisplay(lastVote, `Scanning row ${currentRow} / ${gridRows}`);
+  }
+  if (flashEl) {
+    flashEl.style.opacity = .35;
+    setTimeout(() => flashEl.style.opacity = 0, 70);
+  }
+  if (p5Instance && p5Instance.redraw) p5Instance.redraw();
+
+  if (currentRow < gridRows) {
+    animationTimeoutId = setTimeout(animateRows, 40);
+  } else {
+    isAnimating = false;
+    isFit = true;
+    fitModelBtn.disabled = false;
+    statusDisplay.textContent = `Classified with K = ${K}.`;
+    computeAndDisplayError();
+    voteDisplay.innerHTML = "Hover the space to see how each point's K nearest neighbors vote.";
+  }
+}
+
+function updateVoteDisplay(vote, statusText) {
+  const total = vote.green + vote.purple || 1;
+  const greenPct = (vote.green / total) * 100;
+  const purplePct = (vote.purple / total) * 100;
+  voteDisplay.dataset.hovering = '1';
+  voteDisplay.innerHTML = `
+    <div style="font-size:0.8em;color:#888;margin-bottom:6px;">${statusText}</div>
+    <div class="vote-bar-wrap">
+      <div class="vote-bar-label">Green</div>
+      <div class="vote-bar-track"><div class="vote-bar-fill" style="width:${greenPct}%;background:${GREEN_COLOR};"></div></div>
+      <div style="width:22px;">${vote.green}</div>
+    </div>
+    <div class="vote-bar-wrap">
+      <div class="vote-bar-label">Purple</div>
+      <div class="vote-bar-track"><div class="vote-bar-fill" style="width:${purplePct}%;background:${PURPLE_COLOR};"></div></div>
+      <div style="width:22px;">${vote.purple}</div>
+    </div>
+    <div style="margin-top:6px;">Predicted: <strong style="color:${vote.winner === 'green' ? GREEN_COLOR : PURPLE_COLOR}">${vote.winner}</strong></div>
+  `;
+}
+
+function computeAndDisplayError() {
+  if (points.length === 0) {
+    errorDisplay.textContent = 'Leave-One-Out Error: N/A';
+    return;
+  }
+  let correct = 0;
+  for (let i = 0; i < points.length; i++) {
+    const p = points[i];
+    const neighbors = kNearest(p.x, p.y, i, K);
+    const vote = voteFromNeighbors(neighbors);
+    if (vote.winner === p.color) correct++;
+  }
+  const errRate = ((points.length - correct) / points.length) * 100;
+  errorDisplay.textContent = `Leave-One-Out Error: ${errRate.toFixed(2)}%`;
+}
+
+function drawGrid(sketch) {
+  sketch.noStroke();
+  for (let gy = 0; gy < gridRows; gy++) {
+    for (let gx = 0; gx < gridCols; gx++) {
+      const val = grid[gy * gridCols + gx];
+      if (!val) continue;
+      if (val === 'green') sketch.fill(107, 203, 119, 70);
+      else sketch.fill(132, 94, 194, 70);
+      sketch.rect(gx * GRID_CELL, gy * GRID_CELL, GRID_CELL, GRID_CELL);
+    }
+  }
+}
+
+function drawHoverNeighbors(sketch) {
+  const mx = sketch.mouseX, my = sketch.mouseY;
+  const neighbors = kNearest(mx, my, -1, K);
+  const vote = voteFromNeighbors(neighbors);
+
+  sketch.stroke(255, 255, 255, 160);
+  sketch.strokeWeight(1.2);
+  for (const e of neighbors) {
+    const p = points[e.i];
+    sketch.line(mx, my, p.x, p.y);
+  }
+  sketch.noStroke();
+  for (const e of neighbors) {
+    const p = points[e.i];
+    sketch.fill(255, 255, 255, 220);
+    sketch.ellipse(p.x, p.y, DOT_RADIUS * 2.6, DOT_RADIUS * 2.6);
+    sketch.fill(p.color === 'green' ? GREEN_COLOR : PURPLE_COLOR);
+    sketch.ellipse(p.x, p.y, DOT_RADIUS * 2, DOT_RADIUS * 2);
+  }
+
+  sketch.fill(vote.winner === 'green' ? GREEN_COLOR : PURPLE_COLOR);
+  sketch.stroke(255);
+  sketch.strokeWeight(2);
+  sketch.ellipse(mx, my, 14, 14);
+  sketch.noStroke();
+
+  updateVoteDisplay(vote, `Hovering at (${Math.round(mx)}, ${Math.round(my)})`);
+}
+
+function resetVisualization(clearPoints) {
+  if (clearPoints) points = [];
+  grid = null;
+  isAnimating = false;
+  isFit = false;
+  fitModelBtn.disabled = false;
+  clearTimeout(animationTimeoutId);
+
+  errorDisplay.textContent = 'Leave-One-Out Error: N/A';
+  statusDisplay.textContent = "Place points and click 'Classify Space'.";
+  voteDisplay.dataset.hovering = '0';
+  voteDisplay.innerHTML = "Hover the space after classifying to see how each point's K nearest neighbors vote.";
+
+  if (p5Instance && p5Instance.redraw) p5Instance.redraw();
+}
+
+  </script>
+  <a href="/" class="nav-home">&#8592; Home</a>
+</body>
+</html>

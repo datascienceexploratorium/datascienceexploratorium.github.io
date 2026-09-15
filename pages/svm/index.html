@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>SVM</title>
+<link rel="stylesheet" href="../../assets/shared.css">
+<style>
+  body {
+    overflow: hidden;
+  }
+  #controls {
+    position: fixed;
+    font-size: 18px;
+    top: 10px;
+    left: 10px;
+    border-radius: 12px;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    z-index: 10;
+    height: calc(100vh - 20px);
+    width: calc(30vw - 20px );
+    flex-shrink: 0;
+  }
+
+  #main-controls-grid {
+      display: grid;
+      grid-template-columns: 30% 70%;
+      gap: 10px;
+      width: 100%;
+      justify-content: center;
+      align-items: center;
+      flex-shrink: 0;
+  }
+
+  .color-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    align-items: center;
+  }
+
+  .color-box {
+    width: 100%;
+    max-width: 80px;
+    height: 35px;
+    border: 2px solid #fff;
+    cursor: pointer;
+    border-radius: 4px;
+  }
+  .color-box.selected {
+    box-shadow: 0 0 0 3px #6BCB77;
+  }
+  #green-color { background-color: #6BCB77; }
+  #purple-color { background-color: #845EC2; }
+
+  .ctrl-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    align-items: center;
+  }
+  .ctrl-buttons button {
+    width: 100%;
+    max-width: 180px;
+    height: 36px;
+    font-size: 16px;
+  }
+  canvas {
+    display: block;
+    position: absolute;
+    top: 0; left: 0;
+  }
+  #flash {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background: #fff;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.4s ease;
+    z-index: 20;
+  }
+  #canvas-container {
+    position: absolute;
+    border: 2px solid rgba(255,255,255,0.3);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  #bottom-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      flex-grow: 1;
+      overflow-y: auto;
+      width: 100%;
+      align-items: center;
+  }
+  #param-controls {
+    width: 95%;
+    background: rgba(255,255,255,0.1);
+    backdrop-filter: blur(10px);
+    border-radius: 12px;
+    padding: 10px 12px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  .kernel-toggle {
+    display: flex;
+    gap: 6px;
+  }
+  .kernel-toggle button {
+    flex: 1;
+    height: 32px;
+    font-size: 14px;
+  }
+  .kernel-toggle button.selected {
+    background: var(--btn-active);
+    box-shadow: 0 0 0 2px #6BCB77 inset;
+  }
+  .slider-row {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .slider-row label {
+    font-size: 13px;
+    color: #ccc;
+    display: flex;
+    justify-content: space-between;
+  }
+  #summary-stats {
+    background: rgba(255,255,255,0.1);
+    backdrop-filter: blur(10px);
+    border-radius: 12px;
+    padding: 8px 12px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    color: #eee;
+    font-size: 15px;
+    text-align: center;
+    min-width: 250px;
+    width: 95%;
+    flex-shrink: 0;
+  }
+  #summary-stats p { margin: 2px 0; }
+  #progress-output {
+    max-height: none;
+    flex-grow: 1;
+    overflow-y: auto;
+    width: 95%;
+    text-align: center;
+    background: rgba(255,255,255,0.1);
+    backdrop-filter: blur(10px);
+    border-radius: 12px;
+    padding: 10px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  }
+  #progress-output h3 {
+    margin-bottom: 6px;
+    font-size: 1em;
+    color: #eee;
+  }
+  #chart-wrap {
+      background: #222;
+      border-radius: 8px;
+      padding: 8px;
+  }
+  #lossChart {
+      width: 100%;
+      height: auto;
+      display: block;
+  }
+  #chart-caption {
+    font-size: 12px;
+    color: #999;
+    margin-top: 4px;
+  }
+</style>
+</head>
+<body>
+  <div id="controls">
+    <div id="main-controls-grid">
+        <div class="color-stack">
+            <div class="color-box selected" id="green-color" data-color="green"></div>
+            <div class="color-box" id="purple-color" data-color="purple"></div>
+        </div>
+        <div class="ctrl-buttons">
+            <button id="fitModelBtn">Fit Model</button>
+            <button id="resetBtn">Reset</button>
+        </div>
+    </div>
+
+    <div id="param-controls">
+        <div class="kernel-toggle">
+            <button id="linearKernelBtn" class="selected">Linear</button>
+            <button id="rbfKernelBtn">RBF</button>
+        </div>
+        <div class="slider-row">
+            <label>Regularization (&lambda;) <span id="lambdaVal">0.05</span></label>
+            <input type="range" id="lambdaSlider" min="0.01" max="0.5" step="0.01" value="0.05">
+        </div>
+        <div class="slider-row" id="gammaRow" style="display:none;">
+            <label>Kernel Radius <span id="gammaVal">60px</span></label>
+            <input type="range" id="gammaSlider" min="10" max="400" step="5" value="60">
+        </div>
+    </div>
+
+    <div id="bottom-panel">
+        <div id="summary-stats">
+          <p id="error-display">Model Error: N/A</p>
+          <p id="sv-display">Support Vectors: N/A</p>
+          <p id="epoch-display">Epoch: 0 / 0</p>
+        </div>
+        <div id="progress-output">
+          <h3>Training Error Over Time:</h3>
+          <div id="chart-wrap">
+            <canvas id="lossChart" width="260" height="120"></canvas>
+          </div>
+          <div id="chart-caption">Place points and click 'Fit Model' to train the SVM.</div>
+        </div>
+    </div>
+  </div>
+
+  <div id="canvas-container">
+    <canvas id="canvas"></canvas>
+  </div>
+  <div id="flash"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/p5@1.4.0/lib/p5.js"></script>
+  <script>
+
+let points = [];
+let selectedColor = 'green';
+const DOT_RADIUS = 6;
+const SPRAY_RADIUS = 15;
+const GREEN_COLOR = '#6BCB77';
+const PURPLE_COLOR = '#845EC2';
+
+let canvasContainer;
+let p5Instance;
+let W, H;
+
+let kernelType = 'linear';
+let lambda = 0.05;
+let kernelRadiusPx = 60;
+let effectiveGamma = 4.0;
+
+let svmModel = null;
+let isAnimating = false;
+let animationTimeoutId = null;
+let errorHistory = [];
+
+const GRID_CELL = 12;
+const TOTAL_EPOCHS = 40;
+
+let greenColorBox, purpleColorBox, fitModelBtn, resetBtn;
+let errorDisplay, svDisplay, epochDisplay, flashEl, controls, bottomPanel;
+let linearKernelBtn, rbfKernelBtn, lambdaSlider, lambdaVal, gammaRow, gammaSlider, gammaVal;
+let lossChartCanvas, lossChartCtx, chartCaption;
+
+const s = (sketch) => {
+  sketch.setup = () => {
+    canvasContainer = document.getElementById('canvas-container');
+    if (!canvasContainer) return;
+    const canvas = sketch.createCanvas(canvasContainer.offsetWidth, canvasContainer.offsetHeight);
+    canvas.parent('canvas-container');
+    p5Instance = sketch;
+    W = sketch.width;
+    H = sketch.height;
+    sketch.background(30);
+    sketch.noStroke();
+  };
+
+  sketch.draw = () => {
+    sketch.background(30);
+
+    if (svmModel && !isAnimating) {
+      drawDecisionRegions(sketch, svmModel);
+    } else if (svmModel && isAnimating) {
+      drawDecisionRegions(sketch, svmModel);
+    }
+
+    for (const p of points) {
+      const isSV = svmModel && svmModel.isSupportVector(p);
+      if (isSV) {
+        sketch.stroke(255, 255, 255, 220);
+        sketch.strokeWeight(2);
+      } else {
+        sketch.noStroke();
+      }
+      sketch.fill(p.color === 'green' ? GREEN_COLOR : PURPLE_COLOR);
+      const r = isSV ? DOT_RADIUS * 1.4 : DOT_RADIUS;
+      sketch.ellipse(p.x, p.y, r * 2, r * 2);
+    }
+    sketch.noStroke();
+  };
+
+  sketch.mousePressed = () => {
+    if (!isAnimating && sketch.mouseX > 0 && sketch.mouseX < W && sketch.mouseY > 0 && sketch.mouseY < H) {
+      const offsetX = sketch.random(-SPRAY_RADIUS, SPRAY_RADIUS);
+      const offsetY = sketch.random(-SPRAY_RADIUS, SPRAY_RADIUS);
+      points.push({ x: sketch.mouseX + offsetX, y: sketch.mouseY + offsetY, color: selectedColor });
+      if (svmModel) resetVisualization(false);
+    }
+  };
+
+  sketch.mouseDragged = () => {
+    if (!isAnimating && sketch.mouseIsPressed && sketch.mouseX > 0 && sketch.mouseX < W && sketch.mouseY > 0 && sketch.mouseY < H) {
+      const lastPoint = points[points.length - 1];
+      if (!lastPoint || sketch.dist(sketch.mouseX, sketch.mouseY, lastPoint.x, lastPoint.y) > DOT_RADIUS * 2) {
+        const offsetX = sketch.random(-SPRAY_RADIUS, SPRAY_RADIUS);
+        const offsetY = sketch.random(-SPRAY_RADIUS, SPRAY_RADIUS);
+        points.push({ x: sketch.mouseX + offsetX, y: sketch.mouseY + offsetY, color: selectedColor });
+        if (svmModel) resetVisualization(false);
+      }
+    }
+  };
+
+  sketch.windowResized = () => {
+    if (!controls || !bottomPanel || !canvasContainer || !p5Instance) return;
+    const margin = 10;
+    const controlsWidth = controls.offsetWidth + (margin * 2);
+    const newW = window.innerWidth - controlsWidth - margin;
+    const newH = window.innerHeight - (margin * 2);
+    canvasContainer.style.width = `${newW}px`;
+    canvasContainer.style.height = `${newH}px`;
+    canvasContainer.style.left = `${controls.offsetLeft + controls.offsetWidth + margin}px`;
+    canvasContainer.style.top = `${margin}px`;
+    p5Instance.resizeCanvas(newW, newH);
+    W = newW;
+    H = newH;
+    p5Instance.background(30);
+    p5Instance.redraw();
+  };
+};
+
+document.addEventListener('DOMContentLoaded', () => {
+  greenColorBox = document.getElementById('green-color');
+  purpleColorBox = document.getElementById('purple-color');
+  fitModelBtn = document.getElementById('fitModelBtn');
+  resetBtn = document.getElementById('resetBtn');
+  errorDisplay = document.getElementById('error-display');
+  svDisplay = document.getElementById('sv-display');
+  epochDisplay = document.getElementById('epoch-display');
+  flashEl = document.getElementById('flash');
+  controls = document.getElementById('controls');
+  bottomPanel = document.getElementById('bottom-panel');
+  linearKernelBtn = document.getElementById('linearKernelBtn');
+  rbfKernelBtn = document.getElementById('rbfKernelBtn');
+  lambdaSlider = document.getElementById('lambdaSlider');
+  lambdaVal = document.getElementById('lambdaVal');
+  gammaRow = document.getElementById('gammaRow');
+  gammaSlider = document.getElementById('gammaSlider');
+  gammaVal = document.getElementById('gammaVal');
+  lossChartCanvas = document.getElementById('lossChart');
+  lossChartCtx = lossChartCanvas.getContext('2d');
+  chartCaption = document.getElementById('chart-caption');
+
+  new p5(s);
+
+  greenColorBox.addEventListener('click', () => {
+    selectedColor = 'green';
+    greenColorBox.classList.add('selected');
+    purpleColorBox.classList.remove('selected');
+  });
+  purpleColorBox.addEventListener('click', () => {
+    selectedColor = 'purple';
+    purpleColorBox.classList.add('selected');
+    greenColorBox.classList.remove('selected');
+  });
+
+  linearKernelBtn.addEventListener('click', () => {
+    kernelType = 'linear';
+    linearKernelBtn.classList.add('selected');
+    rbfKernelBtn.classList.remove('selected');
+    gammaRow.style.display = 'none';
+  });
+  rbfKernelBtn.addEventListener('click', () => {
+    kernelType = 'rbf';
+    rbfKernelBtn.classList.add('selected');
+    linearKernelBtn.classList.remove('selected');
+    gammaRow.style.display = 'flex';
+  });
+
+  lambdaSlider.addEventListener('input', () => {
+    lambda = parseFloat(lambdaSlider.value);
+    lambdaVal.textContent = lambda.toFixed(2);
+  });
+  gammaSlider.addEventListener('input', () => {
+    kernelRadiusPx = parseFloat(gammaSlider.value);
+    gammaVal.textContent = `${kernelRadiusPx}px`;
+  });
+
+  fitModelBtn.addEventListener('click', () => {
+    if (isAnimating) return;
+    if (points.length === 0) {
+      alert('Please place some points first!');
+      return;
+    }
+    const hasGreen = points.some(p => p.color === 'green');
+    const hasPurple = points.some(p => p.color === 'purple');
+    if (!hasGreen || !hasPurple) {
+      alert('Please place dots of both green and purple colors to fit the model.');
+      return;
+    }
+    fitSVM();
+  });
+
+  resetBtn.addEventListener('click', () => resetVisualization(true));
+
+  setTimeout(() => {
+    window.dispatchEvent(new Event('resize'));
+  }, 100);
+});
+
+function kernelFn(a, b) {
+  if (kernelType === 'linear') {
+    return a[0] * b[0] + a[1] * b[1] + 1;
+  } else {
+    const dx = a[0] - b[0], dy = a[1] - b[1];
+    return Math.exp(-effectiveGamma * (dx * dx + dy * dy)) + 1;
+  }
+}
+
+function normalizePoint(p) {
+  return [(p.x - W / 2) / (W / 2), (p.y - H / 2) / (H / 2)];
+}
+
+// Kernel Radius is expressed in on-screen pixels so it stays meaningful regardless
+// of canvas size; convert it to a gamma in normalized [-1,1] coordinate space at
+// the moment we (re)train, since W/H can change between placing points and fitting.
+function computeEffectiveGamma() {
+  const scale = (W + H) / 4;
+  const normalizedRadius = kernelRadiusPx / scale;
+  return Math.log(2) / (normalizedRadius * normalizedRadius);
+}
+
+class KernelSVM {
+  constructor(points, lambda, kernelType, gamma) {
+    this.rawPoints = points;
+    this.lambda = lambda;
+    this.kernelType = kernelType;
+    this.gamma = gamma;
+    this.X = points.map(normalizePoint);
+    this.y = points.map(p => p.color === 'green' ? 1 : -1);
+    this.n = points.length;
+    this.alpha = new Array(this.n).fill(0);
+    this.t = 0;
+  }
+
+  runEpoch() {
+    const order = [...Array(this.n).keys()];
+    for (let i = order.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [order[i], order[j]] = [order[j], order[i]];
+    }
+    for (const it of order) {
+      this.t++;
+      const score = this.rawScore(this.X[it]) / (this.lambda * this.t);
+      if (this.y[it] * score < 1) {
+        this.alpha[it] += 1;
+      }
+    }
+  }
+
+  rawScore(xVec) {
+    let sum = 0;
+    for (let j = 0; j < this.n; j++) {
+      if (this.alpha[j] === 0) continue;
+      sum += this.alpha[j] * this.y[j] * kernelFn(this.X[j], xVec);
+    }
+    return sum;
+  }
+
+  decisionValue(xVec) {
+    const denom = this.lambda * Math.max(this.t, 1);
+    return this.rawScore(xVec) / denom;
+  }
+
+  predictCanvasPoint(p) {
+    return this.decisionValue(normalizePoint(p)) >= 0 ? 'green' : 'purple';
+  }
+
+  isSupportVector(p) {
+    const idx = this.rawPoints.indexOf(p);
+    if (idx === -1) return false;
+    return this.alpha[idx] > 0;
+  }
+
+  countSupportVectors() {
+    return this.alpha.filter(a => a > 0).length;
+  }
+}
+
+function fitSVM() {
+  if (isAnimating) return;
+
+  effectiveGamma = computeEffectiveGamma();
+  svmModel = new KernelSVM(points, lambda, kernelType, effectiveGamma);
+  errorHistory = [];
+  isAnimating = true;
+  fitModelBtn.disabled = true;
+  chartCaption.textContent = 'Training...';
+
+  let epoch = 0;
+  const step = () => {
+    svmModel.runEpoch();
+    epoch++;
+
+    const errRate = computeErrorRate(svmModel);
+    errorHistory.push(errRate);
+    updateStats(svmModel, epoch, TOTAL_EPOCHS);
+    drawLossChart();
+
+    if (flashEl) {
+      flashEl.style.opacity = .5;
+      setTimeout(() => flashEl.style.opacity = 0, 90);
+    }
+    if (p5Instance && p5Instance.redraw) p5Instance.redraw();
+
+    if (epoch < TOTAL_EPOCHS) {
+      animationTimeoutId = setTimeout(step, 90);
+    } else {
+      isAnimating = false;
+      fitModelBtn.disabled = false;
+      chartCaption.textContent = `Done. ${svmModel.countSupportVectors()} support vector(s) (ringed in white).`;
+    }
+  };
+  step();
+}
+
+function computeErrorRate(model) {
+  let correct = 0;
+  for (const p of points) {
+    if (model.predictCanvasPoint(p) === p.color) correct++;
+  }
+  return ((points.length - correct) / points.length) * 100;
+}
+
+function updateStats(model, epoch, totalEpochs) {
+  const errRate = errorHistory.length ? errorHistory[errorHistory.length - 1] : 0;
+  errorDisplay.textContent = `Model Error: ${errRate.toFixed(2)}%`;
+  svDisplay.textContent = `Support Vectors: ${model.countSupportVectors()} / ${points.length}`;
+  epochDisplay.textContent = `Epoch: ${epoch} / ${totalEpochs}`;
+}
+
+function drawLossChart() {
+  const ctx = lossChartCtx;
+  const w = lossChartCanvas.width;
+  const h = lossChartCanvas.height;
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = '#222';
+  ctx.fillRect(0, 0, w, h);
+
+  if (errorHistory.length < 2) return;
+
+  const maxErr = Math.max(...errorHistory, 5);
+  const pad = 10;
+  ctx.strokeStyle = '#555';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(pad, h - pad);
+  ctx.lineTo(w - pad, h - pad);
+  ctx.stroke();
+
+  ctx.strokeStyle = '#FFD93D';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  errorHistory.forEach((err, i) => {
+    const x = pad + (i / (TOTAL_EPOCHS - 1)) * (w - 2 * pad);
+    const y = (h - pad) - (err / maxErr) * (h - 2 * pad);
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+
+  ctx.fillStyle = '#999';
+  ctx.font = '10px Arial';
+  ctx.fillText(`${maxErr.toFixed(0)}%`, 2, pad);
+  ctx.fillText('0%', 2, h - pad + 3);
+}
+
+function resetVisualization(clearPoints) {
+  if (clearPoints) points = [];
+  svmModel = null;
+  errorHistory = [];
+  isAnimating = false;
+  fitModelBtn.disabled = false;
+  clearTimeout(animationTimeoutId);
+
+  errorDisplay.textContent = 'Model Error: N/A';
+  svDisplay.textContent = 'Support Vectors: N/A';
+  epochDisplay.textContent = 'Epoch: 0 / 0';
+  chartCaption.textContent = "Place points and click 'Fit Model' to train the SVM.";
+  drawLossChart();
+
+  if (p5Instance && p5Instance.redraw) p5Instance.redraw();
+}
+
+function drawDecisionRegions(sketch, model) {
+  sketch.noStroke();
+  for (let gx = 0; gx < W; gx += GRID_CELL) {
+    for (let gy = 0; gy < H; gy += GRID_CELL) {
+      const cx = gx + GRID_CELL / 2;
+      const cy = gy + GRID_CELL / 2;
+      const val = model.decisionValue(normalizePoint({ x: cx, y: cy }));
+      const conf = Math.min(Math.abs(val), 1);
+      const alpha = 0.10 + conf * 0.28;
+      if (val >= 0) {
+        sketch.fill(107, 203, 119, alpha * 255);
+      } else {
+        sketch.fill(132, 94, 194, alpha * 255);
+      }
+      sketch.rect(gx, gy, GRID_CELL, GRID_CELL);
+    }
+  }
+}
+
+  </script>
+  <a href="/" class="nav-home">&#8592; Home</a>
+</body>
+</html>

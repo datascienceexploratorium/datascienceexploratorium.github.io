@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Neural Net</title>
+<link rel="stylesheet" href="../../assets/shared.css">
+<style>
+  body {
+    overflow: hidden;
+  }
+  #controls {
+    position: fixed;
+    font-size: 18px;
+    top: 10px;
+    left: 10px;
+    border-radius: 12px;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    z-index: 10;
+    height: calc(100vh - 20px);
+    width: calc(30vw - 20px );
+    flex-shrink: 0;
+  }
+
+  #main-controls-grid {
+      display: grid;
+      grid-template-columns: 30% 70%;
+      gap: 10px;
+      width: 100%;
+      justify-content: center;
+      align-items: center;
+      flex-shrink: 0;
+  }
+
+  .color-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    align-items: center;
+  }
+
+  .color-box {
+    width: 100%;
+    max-width: 80px;
+    height: 35px;
+    border: 2px solid #fff;
+    cursor: pointer;
+    border-radius: 4px;
+  }
+  .color-box.selected {
+    box-shadow: 0 0 0 3px #6BCB77;
+  }
+  #green-color { background-color: #6BCB77; }
+  #purple-color { background-color: #845EC2; }
+
+  .ctrl-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    align-items: center;
+  }
+  .ctrl-buttons button {
+    width: 100%;
+    max-width: 180px;
+    height: 36px;
+    font-size: 16px;
+  }
+  canvas {
+    display: block;
+    position: absolute;
+    top: 0; left: 0;
+  }
+  #flash {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background: #fff;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.4s ease;
+    z-index: 20;
+  }
+  #canvas-container {
+    position: absolute;
+    border: 2px solid rgba(255,255,255,0.3);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  #bottom-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      flex-grow: 1;
+      overflow-y: auto;
+      width: 100%;
+      align-items: center;
+  }
+  #param-controls {
+    width: 95%;
+    background: rgba(255,255,255,0.1);
+    backdrop-filter: blur(10px);
+    border-radius: 12px;
+    padding: 10px 12px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+  .slider-row label {
+    font-size: 13px;
+    color: #ccc;
+    display: flex;
+    justify-content: space-between;
+  }
+  #summary-stats {
+    background: rgba(255,255,255,0.1);
+    backdrop-filter: blur(10px);
+    border-radius: 12px;
+    padding: 8px 12px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    color: #eee;
+    font-size: 15px;
+    text-align: center;
+    min-width: 250px;
+    width: 95%;
+    flex-shrink: 0;
+  }
+  #summary-stats p { margin: 2px 0; }
+  #network-output {
+    max-height: none;
+    flex-grow: 1;
+    overflow-y: auto;
+    width: 95%;
+    text-align: center;
+    background: rgba(255,255,255,0.1);
+    backdrop-filter: blur(10px);
+    border-radius: 12px;
+    padding: 10px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  }
+  #network-output h3 {
+    margin-bottom: 6px;
+    font-size: 1em;
+    color: #eee;
+  }
+  #net-wrap {
+      background: #222;
+      border-radius: 8px;
+      padding: 4px;
+  }
+  #netCanvas {
+      width: 100%;
+      height: auto;
+      display: block;
+  }
+  #net-caption {
+    font-size: 12px;
+    color: #999;
+    margin-top: 4px;
+  }
+</style>
+</head>
+<body>
+  <div id="controls">
+    <div id="main-controls-grid">
+        <div class="color-stack">
+            <div class="color-box selected" id="green-color" data-color="green"></div>
+            <div class="color-box" id="purple-color" data-color="purple"></div>
+        </div>
+        <div class="ctrl-buttons">
+            <button id="fitModelBtn">Fit Model</button>
+            <button id="resetBtn">Reset</button>
+        </div>
+    </div>
+
+    <div id="param-controls">
+        <div class="slider-row">
+            <label>Hidden Neurons <span id="hiddenVal">6</span></label>
+            <input type="range" id="hiddenSlider" min="2" max="12" step="1" value="6">
+        </div>
+        <div class="slider-row">
+            <label>Learning Rate <span id="lrVal">0.50</span></label>
+            <input type="range" id="lrSlider" min="0.05" max="1.5" step="0.05" value="0.50">
+        </div>
+    </div>
+
+    <div id="bottom-panel">
+        <div id="summary-stats">
+          <p id="error-display">Model Error: N/A</p>
+          <p id="loss-display">Loss: N/A</p>
+          <p id="epoch-display">Epoch: 0 / 0</p>
+        </div>
+        <div id="network-output">
+          <h3>Network Weights:</h3>
+          <div id="net-wrap">
+            <canvas id="netCanvas" width="260" height="220"></canvas>
+          </div>
+          <div id="net-caption">Place points and click 'Fit Model' to train the network.</div>
+        </div>
+    </div>
+  </div>
+
+  <div id="canvas-container">
+    <canvas id="canvas"></canvas>
+  </div>
+  <div id="flash"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/p5@1.4.0/lib/p5.js"></script>
+  <script>
+
+let points = [];
+let selectedColor = 'green';
+const DOT_RADIUS = 6;
+const SPRAY_RADIUS = 15;
+const GREEN_COLOR = '#6BCB77';
+const PURPLE_COLOR = '#845EC2';
+
+let canvasContainer;
+let p5Instance;
+let W, H;
+
+let hiddenSize = 6;
+let learningRate = 0.5;
+
+let nnModel = null;
+let isAnimating = false;
+let animationTimeoutId = null;
+
+const GRID_CELL = 10;
+const TOTAL_EPOCHS = 400;
+const EPOCHS_PER_FRAME = 4;
+
+let greenColorBox, purpleColorBox, fitModelBtn, resetBtn;
+let errorDisplay, lossDisplay, epochDisplay, flashEl, controls, bottomPanel;
+let hiddenSlider, hiddenVal, lrSlider, lrVal;
+let netCanvas, netCtx, netCaption;
+
+let decisionGrid = null;
+let gridCols = 0, gridRows = 0;
+
+const s = (sketch) => {
+  sketch.setup = () => {
+    canvasContainer = document.getElementById('canvas-container');
+    if (!canvasContainer) return;
+    const canvas = sketch.createCanvas(canvasContainer.offsetWidth, canvasContainer.offsetHeight);
+    canvas.parent('canvas-container');
+    p5Instance = sketch;
+    W = sketch.width;
+    H = sketch.height;
+    sketch.background(30);
+    sketch.noStroke();
+  };
+
+  sketch.draw = () => {
+    sketch.background(30);
+
+    if (decisionGrid) {
+      drawDecisionGrid(sketch);
+    }
+
+    sketch.noStroke();
+    for (const p of points) {
+      sketch.fill(p.color === 'green' ? GREEN_COLOR : PURPLE_COLOR);
+      sketch.ellipse(p.x, p.y, DOT_RADIUS * 2, DOT_RADIUS * 2);
+    }
+  };
+
+  sketch.mousePressed = () => {
+    if (!isAnimating && sketch.mouseX > 0 && sketch.mouseX < W && sketch.mouseY > 0 && sketch.mouseY < H) {
+      const offsetX = sketch.random(-SPRAY_RADIUS, SPRAY_RADIUS);
+      const offsetY = sketch.random(-SPRAY_RADIUS, SPRAY_RADIUS);
+      points.push({ x: sketch.mouseX + offsetX, y: sketch.mouseY + offsetY, color: selectedColor });
+      if (nnModel) resetVisualization(false);
+    }
+  };
+
+  sketch.mouseDragged = () => {
+    if (!isAnimating && sketch.mouseIsPressed && sketch.mouseX > 0 && sketch.mouseX < W && sketch.mouseY > 0 && sketch.mouseY < H) {
+      const lastPoint = points[points.length - 1];
+      if (!lastPoint || sketch.dist(sketch.mouseX, sketch.mouseY, lastPoint.x, lastPoint.y) > DOT_RADIUS * 2) {
+        const offsetX = sketch.random(-SPRAY_RADIUS, SPRAY_RADIUS);
+        const offsetY = sketch.random(-SPRAY_RADIUS, SPRAY_RADIUS);
+        points.push({ x: sketch.mouseX + offsetX, y: sketch.mouseY + offsetY, color: selectedColor });
+        if (nnModel) resetVisualization(false);
+      }
+    }
+  };
+
+  sketch.windowResized = () => {
+    if (!controls || !bottomPanel || !canvasContainer || !p5Instance) return;
+    const margin = 10;
+    const controlsWidth = controls.offsetWidth + (margin * 2);
+    const newW = window.innerWidth - controlsWidth - margin;
+    const newH = window.innerHeight - (margin * 2);
+    canvasContainer.style.width = `${newW}px`;
+    canvasContainer.style.height = `${newH}px`;
+    canvasContainer.style.left = `${controls.offsetLeft + controls.offsetWidth + margin}px`;
+    canvasContainer.style.top = `${margin}px`;
+    p5Instance.resizeCanvas(newW, newH);
+    W = newW;
+    H = newH;
+    p5Instance.background(30);
+    p5Instance.redraw();
+  };
+};
+
+document.addEventListener('DOMContentLoaded', () => {
+  greenColorBox = document.getElementById('green-color');
+  purpleColorBox = document.getElementById('purple-color');
+  fitModelBtn = document.getElementById('fitModelBtn');
+  resetBtn = document.getElementById('resetBtn');
+  errorDisplay = document.getElementById('error-display');
+  lossDisplay = document.getElementById('loss-display');
+  epochDisplay = document.getElementById('epoch-display');
+  flashEl = document.getElementById('flash');
+  controls = document.getElementById('controls');
+  bottomPanel = document.getElementById('bottom-panel');
+  hiddenSlider = document.getElementById('hiddenSlider');
+  hiddenVal = document.getElementById('hiddenVal');
+  lrSlider = document.getElementById('lrSlider');
+  lrVal = document.getElementById('lrVal');
+  netCanvas = document.getElementById('netCanvas');
+  netCtx = netCanvas.getContext('2d');
+  netCaption = document.getElementById('net-caption');
+
+  new p5(s);
+
+  greenColorBox.addEventListener('click', () => {
+    selectedColor = 'green';
+    greenColorBox.classList.add('selected');
+    purpleColorBox.classList.remove('selected');
+  });
+  purpleColorBox.addEventListener('click', () => {
+    selectedColor = 'purple';
+    purpleColorBox.classList.add('selected');
+    greenColorBox.classList.remove('selected');
+  });
+
+  hiddenSlider.addEventListener('input', () => {
+    hiddenSize = parseInt(hiddenSlider.value, 10);
+    hiddenVal.textContent = hiddenSize;
+    drawNetworkDiagram(null);
+  });
+  lrSlider.addEventListener('input', () => {
+    learningRate = parseFloat(lrSlider.value);
+    lrVal.textContent = learningRate.toFixed(2);
+  });
+
+  fitModelBtn.addEventListener('click', () => {
+    if (isAnimating) return;
+    if (points.length === 0) {
+      alert('Please place some points first!');
+      return;
+    }
+    const hasGreen = points.some(p => p.color === 'green');
+    const hasPurple = points.some(p => p.color === 'purple');
+    if (!hasGreen || !hasPurple) {
+      alert('Please place dots of both green and purple colors to fit the model.');
+      return;
+    }
+    fitNN();
+  });
+
+  resetBtn.addEventListener('click', () => resetVisualization(true));
+
+  drawNetworkDiagram(null);
+  setTimeout(() => {
+    window.dispatchEvent(new Event('resize'));
+  }, 100);
+});
+
+function normalizePoint(p) {
+  return [(p.x - W / 2) / (W / 2), (p.y - H / 2) / (H / 2)];
+}
+
+function randInit(scale) {
+  return (Math.random() * 2 - 1) * scale;
+}
+
+class SimpleNN {
+  constructor(hiddenSize) {
+    this.H = hiddenSize;
+    this.w1 = Array.from({ length: 2 }, () => Array.from({ length: this.H }, () => randInit(1.0)));
+    this.b1 = Array.from({ length: this.H }, () => 0);
+    this.w2 = Array.from({ length: this.H }, () => randInit(1.0));
+    this.b2 = 0;
+    this.weightDecay = 1e-4;
+  }
+
+  forward(x) {
+    const hAct = new Array(this.H);
+    for (let j = 0; j < this.H; j++) {
+      let sum = this.b1[j];
+      for (let i = 0; i < 2; i++) sum += this.w1[i][j] * x[i];
+      hAct[j] = Math.tanh(sum);
+    }
+    let z = this.b2;
+    for (let j = 0; j < this.H; j++) z += this.w2[j] * hAct[j];
+    const yhat = 1 / (1 + Math.exp(-z));
+    return { hAct, yhat };
+  }
+
+  predictProb(x) {
+    return this.forward(x).yhat;
+  }
+
+  trainEpoch(X, Y, lr) {
+    const n = X.length;
+    const order = [...Array(n).keys()];
+    for (let i = order.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [order[i], order[j]] = [order[j], order[i]];
+    }
+
+    let totalLoss = 0;
+
+    for (const k of order) {
+      const x = X[k];
+      const y = Y[k];
+      const { hAct, yhat } = this.forward(x);
+      const eps = 1e-9;
+      totalLoss += -(y * Math.log(yhat + eps) + (1 - y) * Math.log(1 - yhat + eps));
+
+      const dz = yhat - y;
+      const dh = new Array(this.H);
+      for (let j = 0; j < this.H; j++) {
+        dh[j] = dz * this.w2[j];
+        this.w2[j] -= lr * (dz * hAct[j] + this.weightDecay * this.w2[j]);
+      }
+      this.b2 -= lr * dz;
+
+      for (let j = 0; j < this.H; j++) {
+        const dz1 = dh[j] * (1 - hAct[j] * hAct[j]);
+        for (let i = 0; i < 2; i++) {
+          this.w1[i][j] -= lr * (dz1 * x[i] + this.weightDecay * this.w1[i][j]);
+        }
+        this.b1[j] -= lr * dz1;
+      }
+    }
+
+    return totalLoss / n;
+  }
+}
+
+function fitNN() {
+  if (isAnimating) return;
+
+  nnModel = new SimpleNN(hiddenSize);
+  const X = points.map(normalizePoint);
+  const Y = points.map(p => p.color === 'green' ? 1 : 0);
+
+  isAnimating = true;
+  fitModelBtn.disabled = true;
+  hiddenSlider.disabled = true;
+  netCaption.textContent = 'Training...';
+
+  let epoch = 0;
+  let lastLoss = 0;
+
+  const step = () => {
+    for (let e = 0; e < EPOCHS_PER_FRAME && epoch < TOTAL_EPOCHS; e++) {
+      lastLoss = nnModel.trainEpoch(X, Y, learningRate);
+      epoch++;
+    }
+
+    computeDecisionGrid();
+    const errRate = computeErrorRate();
+    lossDisplay.textContent = `Loss: ${lastLoss.toFixed(4)}`;
+    errorDisplay.textContent = `Model Error: ${errRate.toFixed(2)}%`;
+    epochDisplay.textContent = `Epoch: ${epoch} / ${TOTAL_EPOCHS}`;
+    drawNetworkDiagram(nnModel);
+
+    if (flashEl) {
+      flashEl.style.opacity = .35;
+      setTimeout(() => flashEl.style.opacity = 0, 70);
+    }
+    if (p5Instance && p5Instance.redraw) p5Instance.redraw();
+
+    if (epoch < TOTAL_EPOCHS) {
+      animationTimeoutId = setTimeout(step, 30);
+    } else {
+      isAnimating = false;
+      fitModelBtn.disabled = false;
+      hiddenSlider.disabled = false;
+      netCaption.textContent = 'Training complete.';
+    }
+  };
+  step();
+}
+
+function computeDecisionGrid() {
+  gridCols = Math.ceil(W / GRID_CELL);
+  gridRows = Math.ceil(H / GRID_CELL);
+  decisionGrid = new Float32Array(gridCols * gridRows);
+  for (let gy = 0; gy < gridRows; gy++) {
+    const cy = gy * GRID_CELL + GRID_CELL / 2;
+    for (let gx = 0; gx < gridCols; gx++) {
+      const cx = gx * GRID_CELL + GRID_CELL / 2;
+      decisionGrid[gy * gridCols + gx] = nnModel.predictProb(normalizePoint({ x: cx, y: cy }));
+    }
+  }
+}
+
+function computeErrorRate() {
+  let correct = 0;
+  for (const p of points) {
+    const prob = nnModel.predictProb(normalizePoint(p));
+    const predicted = prob >= 0.5 ? 'green' : 'purple';
+    if (predicted === p.color) correct++;
+  }
+  return ((points.length - correct) / points.length) * 100;
+}
+
+function drawDecisionGrid(sketch) {
+  sketch.noStroke();
+  for (let gy = 0; gy < gridRows; gy++) {
+    for (let gx = 0; gx < gridCols; gx++) {
+      const prob = decisionGrid[gy * gridCols + gx];
+      const conf = Math.abs(prob - 0.5) * 2;
+      const alpha = 0.10 + conf * 0.30;
+      if (prob >= 0.5) sketch.fill(107, 203, 119, alpha * 255);
+      else sketch.fill(132, 94, 194, alpha * 255);
+      sketch.rect(gx * GRID_CELL, gy * GRID_CELL, GRID_CELL, GRID_CELL);
+    }
+  }
+}
+
+function drawNetworkDiagram(model) {
+  const ctx = netCtx;
+  const w = netCanvas.width;
+  const h = netCanvas.height;
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = '#222';
+  ctx.fillRect(0, 0, w, h);
+
+  const hCount = model ? model.H : hiddenSize;
+  const inputX = 30, hiddenX = w / 2, outputX = w - 30;
+  const inputYs = [h * 0.35, h * 0.65];
+  const outputY = h / 2;
+  const hiddenYs = [];
+  for (let j = 0; j < hCount; j++) {
+    hiddenYs.push(h * (j + 1) / (hCount + 1));
+  }
+
+  ctx.lineWidth = 1;
+  if (model) {
+    let maxW1 = 0.001;
+    for (let i = 0; i < 2; i++) for (let j = 0; j < hCount; j++) maxW1 = Math.max(maxW1, Math.abs(model.w1[i][j]));
+    let maxW2 = 0.001;
+    for (let j = 0; j < hCount; j++) maxW2 = Math.max(maxW2, Math.abs(model.w2[j]));
+
+    for (let i = 0; i < 2; i++) {
+      for (let j = 0; j < hCount; j++) {
+        const wgt = model.w1[i][j];
+        const alpha = Math.min(Math.abs(wgt) / maxW1, 1);
+        ctx.strokeStyle = wgt >= 0 ? `rgba(107,203,119,${0.15 + alpha * 0.7})` : `rgba(255,107,107,${0.15 + alpha * 0.7})`;
+        ctx.lineWidth = 0.5 + alpha * 2.5;
+        ctx.beginPath();
+        ctx.moveTo(inputX, inputYs[i]);
+        ctx.lineTo(hiddenX, hiddenYs[j]);
+        ctx.stroke();
+      }
+    }
+    for (let j = 0; j < hCount; j++) {
+      const wgt = model.w2[j];
+      const alpha = Math.min(Math.abs(wgt) / maxW2, 1);
+      ctx.strokeStyle = wgt >= 0 ? `rgba(107,203,119,${0.15 + alpha * 0.7})` : `rgba(255,107,107,${0.15 + alpha * 0.7})`;
+      ctx.lineWidth = 0.5 + alpha * 2.5;
+      ctx.beginPath();
+      ctx.moveTo(hiddenX, hiddenYs[j]);
+      ctx.lineTo(outputX, outputY);
+      ctx.stroke();
+    }
+  } else {
+    ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 2; i++) {
+      for (let j = 0; j < hCount; j++) {
+        ctx.beginPath();
+        ctx.moveTo(inputX, inputYs[i]);
+        ctx.lineTo(hiddenX, hiddenYs[j]);
+        ctx.stroke();
+      }
+    }
+    for (let j = 0; j < hCount; j++) {
+      ctx.beginPath();
+      ctx.moveTo(hiddenX, hiddenYs[j]);
+      ctx.lineTo(outputX, outputY);
+      ctx.stroke();
+    }
+  }
+
+  ctx.fillStyle = '#4D96FF';
+  inputYs.forEach((y) => {
+    ctx.beginPath();
+    ctx.arc(inputX, y, 6, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.fillStyle = '#FFD93D';
+  hiddenYs.forEach((y) => {
+    ctx.beginPath();
+    ctx.arc(hiddenX, y, 6, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.fillStyle = '#eee';
+  ctx.beginPath();
+  ctx.arc(outputX, outputY, 7, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = '#999';
+  ctx.font = '10px Arial';
+  ctx.fillText('x', inputX - 4, inputYs[0] - 10);
+  ctx.fillText('y', inputX - 4, inputYs[1] + 20);
+  ctx.fillText('out', outputX - 10, outputY - 12);
+}
+
+function resetVisualization(clearPoints) {
+  if (clearPoints) points = [];
+  nnModel = null;
+  decisionGrid = null;
+  isAnimating = false;
+  fitModelBtn.disabled = false;
+  hiddenSlider.disabled = false;
+  clearTimeout(animationTimeoutId);
+
+  errorDisplay.textContent = 'Model Error: N/A';
+  lossDisplay.textContent = 'Loss: N/A';
+  epochDisplay.textContent = 'Epoch: 0 / 0';
+  netCaption.textContent = "Place points and click 'Fit Model' to train the network.";
+  drawNetworkDiagram(null);
+
+  if (p5Instance && p5Instance.redraw) p5Instance.redraw();
+}
+
+  </script>
+  <a href="/" class="nav-home">&#8592; Home</a>
+</body>
+</html>
