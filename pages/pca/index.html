@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>PCA in 3D</title>
+<link rel="stylesheet" href="../../assets/shared.css">
+<style>
+  html, body {
+    width: 100vw; height: 100vh;
+    overflow: hidden;
+  }
+  #controls {
+    position: fixed;
+    left: 0; top: 0; bottom: 0;
+    width: 340px;
+    border-radius: 0 22px 22px 0;
+    padding: 24px;
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    font-size: 16px;
+    overflow-x: hidden;
+    overflow-y: auto;
+    box-sizing: border-box;
+  }
+  .ctrl-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  #controls button {
+    width: 100%;
+    height: 42px;
+    font-size: 16px;
+    font-weight: 600;
+  }
+  .stepper-slider {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px 10px;
+    font-size: 15px;
+    white-space: nowrap;
+  }
+  .stepper-slider span {
+    min-width: 0;
+    font-size: 15px;
+    font-weight: 500;
+  }
+  .stepper-slider input[type="range"] {
+    flex: 1 1 100px;
+    min-width: 70px;
+  }
+  #status-display {
+    background: rgba(255,255,255,0.1);
+    backdrop-filter: blur(10px);
+    border-radius: 12px;
+    padding: 10px 12px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    font-size: 14px;
+    line-height: 1.4;
+  }
+  #pca-output {
+    background: rgba(255,255,255,0.1);
+    backdrop-filter: blur(10px);
+    border-radius: 12px;
+    padding: 12px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  }
+  #pca-output h3 {
+    margin-bottom: 8px;
+    font-size: 1em;
+    color: #eee;
+  }
+  #variance-display {
+    font-size: 13px;
+    color: #999;
+  }
+  .var-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 6px 0;
+  }
+  .var-label {
+    width: 34px;
+    font-weight: 700;
+    font-size: 13px;
+  }
+  .var-bar-track {
+    flex-grow: 1;
+    height: 14px;
+    background: #222;
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .var-bar-fill {
+    height: 100%;
+  }
+  .var-pct {
+    width: 46px;
+    text-align: right;
+    font-size: 13px;
+    color: #ccc;
+  }
+  #help-text {
+    font-size: 12px;
+    color: #888;
+    line-height: 1.5;
+  }
+  #canvas-container {
+    position: absolute;
+    left: 340px; top: 0;
+    width: calc(100vw - 340px);
+    height: 100vh;
+    background: #111;
+  }
+  #canvas-container canvas {
+    display: block;
+  }
+  @media (max-width: 760px) {
+    #controls { width: 100vw; position: static; border-radius: 0; max-height: 50vh; }
+    #canvas-container { left: 0; width: 100vw; height: 50vh; top: 50vh; }
+  }
+</style>
+</head>
+<body>
+  <div id="controls" class="controls sidebar">
+    <div class="ctrl-buttons">
+      <button id="newCloudBtn">New Point Cloud</button>
+      <button id="runPcaBtn">Run PCA</button>
+      <button id="resetViewBtn">Reset View</button>
+    </div>
+    <div class="stepper-slider">
+      <span>Number of Points:</span>
+      <input type="range" id="pointCountSlider" min="50" max="1000" step="50" value="300">
+      <span id="pointCountVal">300</span>
+    </div>
+    <div id="status-display">Drag to orbit, scroll to zoom, right-drag to pan. Click "New Point Cloud" to begin.</div>
+    <div id="pca-output">
+      <h3>Explained Variance:</h3>
+      <div id="variance-display">Click "Run PCA" to analyze the point cloud.</div>
+    </div>
+    <div id="help-text">
+      The cloud is generated as a tilted, stretched Gaussian blob so its natural axes of greatest spread aren't aligned with the view. PCA finds those axes directly from the point coordinates — the colored arrows are the actual eigenvectors of the data's covariance matrix, scaled by their standard deviation.
+    </div>
+  </div>
+
+  <div id="canvas-container"></div>
+  <a href="/" class="nav-home">&#8592; Home</a>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+    const container = document.getElementById('canvas-container');
+    const newCloudBtn = document.getElementById('newCloudBtn');
+    const runPcaBtn = document.getElementById('runPcaBtn');
+    const resetViewBtn = document.getElementById('resetViewBtn');
+    const pointCountSlider = document.getElementById('pointCountSlider');
+    const pointCountVal = document.getElementById('pointCountVal');
+    const statusDisplay = document.getElementById('status-display');
+    const varianceDisplay = document.getElementById('variance-display');
+
+    const PC_COLORS = [0xFF9F45, 0x4DD0E1, 0xE066FF];
+    const PC_COLORS_CSS = ['#FF9F45', '#4DD0E1', '#E066FF'];
+
+    let scene, camera, renderer, controls;
+    let cloudGroup = null;
+    let pointsObj = null;
+    let arrowHelpers = [];
+    let isAnimating = false;
+    let animToken = 0;
+
+    // Soft round sprite for cloud points — plain opaque squares packed
+    // densely into a stretched blob tend to tile together into a solid,
+    // artificial-looking slab; soft round dots read as a fuzzy cloud instead.
+    function createDiscTexture() {
+      const size = 64;
+      const c = document.createElement('canvas');
+      c.width = size; c.height = size;
+      const ctx = c.getContext('2d');
+      const grad = ctx.createRadialGradient(size/2, size/2, 0, size/2, size/2, size/2);
+      grad.addColorStop(0, 'rgba(255,255,255,1)');
+      grad.addColorStop(0.5, 'rgba(255,255,255,0.85)');
+      grad.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, size, size);
+      return c;
+    }
+    const discTexture = new THREE.CanvasTexture(createDiscTexture());
+
+    function initScene() {
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x111111);
+
+      camera = new THREE.PerspectiveCamera(50, container.clientWidth / container.clientHeight, 0.1, 5000);
+      camera.position.set(320, 260, 420);
+
+      renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setPixelRatio(window.devicePixelRatio);
+      renderer.setSize(container.clientWidth, container.clientHeight);
+      container.appendChild(renderer.domElement);
+
+      controls = new OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.08;
+      controls.target.set(0, 0, 0);
+
+      const axes = new THREE.AxesHelper(220);
+      scene.add(axes);
+
+      // Offset the grid slightly below y=0 so its lines don't sit in the exact
+      // same plane as the X/Z axes — coplanar lines z-fight and flicker.
+      const grid = new THREE.GridHelper(600, 20, 0x333333, 0x222222);
+      grid.position.y = -1;
+      scene.add(grid);
+
+      scene.add(new THREE.AmbientLight(0xffffff, 1.0));
+
+      window.addEventListener('resize', onResize);
+      animate();
+    }
+
+    function onResize() {
+      const w = container.clientWidth, h = container.clientHeight;
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+      renderer.setSize(w, h);
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+      controls.update();
+      renderer.render(scene, camera);
+    }
+
+    // ---------- Point cloud generation ----------
+
+    function gaussianRandom() {
+      let u = 0, v = 0;
+      while (u === 0) u = Math.random();
+      while (v === 0) v = Math.random();
+      return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+    }
+
+    function randomOrthonormalBasis() {
+      const randVec = () => new THREE.Vector3(Math.random()*2-1, Math.random()*2-1, Math.random()*2-1);
+      const b1 = randVec().normalize();
+      const raw2 = randVec();
+      const b2 = raw2.clone().sub(b1.clone().multiplyScalar(raw2.dot(b1))).normalize();
+      const b3 = new THREE.Vector3().crossVectors(b1, b2).normalize();
+      return [b1, b2, b3];
+    }
+
+    function generateCloud(n) {
+      const [b1, b2, b3] = randomOrthonormalBasis();
+      // Draw each axis's spread independently from one shared, overlapping
+      // range rather than three non-overlapping bands. That way the raw
+      // cloud doesn't visibly telegraph which direction has the most
+      // variance — sometimes two (or all three) spreads land close together
+      // and the shape looks close to an irregular blob rather than an
+      // obviously-labeled rod or slab. PCA is what should reveal the order.
+      const sigmas = [1, 2, 3].map(() => 15 + Math.random() * 55);
+      const pts = [];
+      for (let i = 0; i < n; i++) {
+        const p = new THREE.Vector3()
+          .addScaledVector(b1, gaussianRandom() * sigmas[0])
+          .addScaledVector(b2, gaussianRandom() * sigmas[1])
+          .addScaledVector(b3, gaussianRandom() * sigmas[2]);
+        pts.push(p);
+      }
+      return pts;
+    }
+
+    // ---------- PCA (from scratch, honest — only sees point coordinates) ----------
+
+    function computeCovariance(points) {
+      const n = points.length;
+      const mean = new THREE.Vector3();
+      points.forEach(p => mean.add(p));
+      mean.divideScalar(n);
+      const cov = [[0,0,0],[0,0,0],[0,0,0]];
+      points.forEach(p => {
+        const d = [p.x - mean.x, p.y - mean.y, p.z - mean.z];
+        for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) cov[i][j] += d[i]*d[j];
+      });
+      for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) cov[i][j] /= (n - 1);
+      return { mean, cov };
+    }
+
+    function jacobiEigen3x3(A, maxSweeps = 100, tol = 1e-12) {
+      let a = [[...A[0]],[...A[1]],[...A[2]]];
+      let v = [[1,0,0],[0,1,0],[0,0,1]];
+      for (let sweep = 0; sweep < maxSweeps; sweep++) {
+        const off = Math.abs(a[0][1]) + Math.abs(a[0][2]) + Math.abs(a[1][2]);
+        if (off < tol) break;
+        for (const [p, q] of [[0,1],[0,2],[1,2]]) {
+          if (Math.abs(a[p][q]) < 1e-15) continue;
+          const theta = (a[q][q] - a[p][p]) / (2 * a[p][q]);
+          const sign = theta >= 0 ? 1 : -1;
+          const t = sign / (Math.abs(theta) + Math.sqrt(theta*theta + 1));
+          const c = 1 / Math.sqrt(t*t + 1);
+          const s = t * c;
+          const app = a[p][p], aqq = a[q][q], apq = a[p][q];
+          a[p][p] = c*c*app - 2*s*c*apq + s*s*aqq;
+          a[q][q] = s*s*app + 2*s*c*apq + c*c*aqq;
+          a[p][q] = 0; a[q][p] = 0;
+          for (let k = 0; k < 3; k++) {
+            if (k !== p && k !== q) {
+              const akp = a[k][p], akq = a[k][q];
+              a[k][p] = a[p][k] = c*akp - s*akq;
+              a[k][q] = a[q][k] = s*akp + c*akq;
+            }
+          }
+          for (let k = 0; k < 3; k++) {
+            const vkp = v[k][p], vkq = v[k][q];
+            v[k][p] = c*vkp - s*vkq;
+            v[k][q] = s*vkp + c*vkq;
+          }
+        }
+      }
+      const values = [a[0][0], a[1][1], a[2][2]];
+      const vectors = [
+        [v[0][0], v[1][0], v[2][0]],
+        [v[0][1], v[1][1], v[2][1]],
+        [v[0][2], v[1][2], v[2][2]],
+      ];
+      const idx = [0,1,2].sort((i,j) => values[j] - values[i]);
+      return { values: idx.map(i => values[i]), vectors: idx.map(i => vectors[i]) };
+    }
+
+    function runPCA(points) {
+      const { mean, cov } = computeCovariance(points);
+      const { values, vectors } = jacobiEigen3x3(cov);
+
+      // Force a proper rotation (det = +1), not a reflection, by flipping the
+      // least significant axis if needed — keeps the later animation a clean
+      // rigid rotation rather than a mirror flip.
+      const v1 = new THREE.Vector3(...vectors[0]);
+      const v2 = new THREE.Vector3(...vectors[1]);
+      let v3 = new THREE.Vector3(...vectors[2]);
+      const det = new THREE.Vector3().crossVectors(v1, v2).dot(v3);
+      if (det < 0) v3.negate();
+
+      return { mean, values, vectors: [v1, v2, v3] };
+    }
+
+    // ---------- Scene building ----------
+
+    function clearCloud() {
+      if (cloudGroup) {
+        scene.remove(cloudGroup);
+        cloudGroup.traverse(obj => {
+          if (obj.geometry) obj.geometry.dispose();
+          if (obj.material) obj.material.dispose();
+        });
+      }
+      cloudGroup = null;
+      pointsObj = null;
+      arrowHelpers = [];
+    }
+
+    function buildCloud(points) {
+      clearCloud();
+      cloudGroup = new THREE.Group();
+
+      const geom = new THREE.BufferGeometry();
+      const positions = new Float32Array(points.length * 3);
+      points.forEach((p, i) => {
+        positions[i*3] = p.x; positions[i*3+1] = p.y; positions[i*3+2] = p.z;
+      });
+      geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      const mat = new THREE.PointsMaterial({
+        color: 0x6BCB77,
+        size: 6,
+        map: discTexture,
+        transparent: true,
+        alphaTest: 0.1,
+        sizeAttenuation: true,
+      });
+      pointsObj = new THREE.Points(geom, mat);
+      cloudGroup.add(pointsObj);
+
+      scene.add(cloudGroup);
+    }
+
+    // ---------- Animation helpers ----------
+
+    function tween(duration, onUpdate) {
+      return new Promise(resolve => {
+        const myToken = animToken;
+        const start = performance.now();
+        function step(now) {
+          if (myToken !== animToken) { resolve(false); return; }
+          const t = Math.min(1, (now - start) / duration);
+          const eased = t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2, 3) / 2;
+          onUpdate(eased, t);
+          if (t < 1) requestAnimationFrame(step);
+          else resolve(true);
+        }
+        requestAnimationFrame(step);
+      });
+    }
+
+    function renderVarianceDisplay(values) {
+      const total = values[0] + values[1] + values[2];
+      let html = '';
+      values.forEach((v, i) => {
+        const pct = total > 0 ? (v / total * 100) : 0;
+        html += `<div class="var-row">
+          <span class="var-label" style="color:${PC_COLORS_CSS[i]}">PC${i+1}</span>
+          <div class="var-bar-track"><div class="var-bar-fill" style="width:${pct.toFixed(1)}%;background:${PC_COLORS_CSS[i]};"></div></div>
+          <span class="var-pct">${pct.toFixed(1)}%</span>
+        </div>`;
+      });
+      varianceDisplay.innerHTML = html;
+    }
+
+    async function runPcaSequence() {
+      if (!cloudGroup || isAnimating) return;
+      isAnimating = true;
+      animToken++;
+      runPcaBtn.disabled = true;
+      newCloudBtn.disabled = true;
+
+      // reset any prior rotation before analyzing / re-showing axes
+      cloudGroup.quaternion.identity();
+      arrowHelpers.forEach(a => cloudGroup.remove(a));
+      arrowHelpers = [];
+
+      const positions = pointsObj.geometry.attributes.position;
+      const pts = [];
+      for (let i = 0; i < positions.count; i++) {
+        pts.push(new THREE.Vector3(positions.getX(i), positions.getY(i), positions.getZ(i)));
+      }
+
+      statusDisplay.textContent = 'Computing the covariance matrix and its eigenvectors...';
+      const { values, vectors } = runPCA(pts);
+      renderVarianceDisplay(values);
+
+      const targetLengths = values.map(v => 2 * Math.sqrt(Math.max(v, 0)));
+
+      statusDisplay.textContent = 'Finding the directions of greatest spread (the principal components)...';
+      for (let i = 0; i < 3; i++) {
+        const dir = vectors[i].clone().normalize();
+        const arrow = new THREE.ArrowHelper(dir, new THREE.Vector3(0,0,0), 0.001, PC_COLORS[i], targetLengths[i]*0.18, targetLengths[i]*0.12);
+        cloudGroup.add(arrow);
+        arrowHelpers.push(arrow);
+        const ok = await tween(500, eased => {
+          arrow.setLength(Math.max(0.001, targetLengths[i]*eased), targetLengths[i]*0.18, targetLengths[i]*0.12);
+        });
+        if (!ok) { isAnimating = false; return; }
+        await tween(150, () => {});
+      }
+
+      statusDisplay.textContent = 'Rotating the cloud so PC1, PC2, PC3 line up with the reference X/Y/Z axes...';
+      await tween(300, () => {});
+
+      // Target rotation: R = [v1; v2; v3] (rows), i.e. R * p = (v1.p, v2.p, v3.p).
+      // Applying this as the group's world rotation carries every local point
+      // (and each arrow, still pointing along its own vI in local space) to
+      // align with the fixed world X/Y/Z axes.
+      const m = new THREE.Matrix4();
+      m.set(
+        vectors[0].x, vectors[0].y, vectors[0].z, 0,
+        vectors[1].x, vectors[1].y, vectors[1].z, 0,
+        vectors[2].x, vectors[2].y, vectors[2].z, 0,
+        0, 0, 0, 1
+      );
+      const targetQuat = new THREE.Quaternion().setFromRotationMatrix(m);
+      const startQuat = cloudGroup.quaternion.clone();
+
+      const ok2 = await tween(1800, eased => {
+        cloudGroup.quaternion.slerpQuaternions(startQuat, targetQuat, eased);
+      });
+      if (!ok2) { isAnimating = false; return; }
+
+      statusDisplay.textContent = 'Done — PC1 (orange), PC2 (cyan) and PC3 (magenta) now line up with the reference X, Y and Z axes.';
+      isAnimating = false;
+      runPcaBtn.disabled = false;
+      newCloudBtn.disabled = false;
+    }
+
+    // ---------- Controls wiring ----------
+
+    newCloudBtn.addEventListener('click', () => {
+      animToken++;
+      isAnimating = false;
+      runPcaBtn.disabled = false;
+      newCloudBtn.disabled = false;
+      const n = parseInt(pointCountSlider.value, 10);
+      const pts = generateCloud(n);
+      buildCloud(pts);
+      statusDisplay.textContent = `Generated ${n} points. Click "Run PCA" to find its principal components.`;
+      varianceDisplay.innerHTML = 'Click "Run PCA" to analyze the point cloud.';
+    });
+
+    runPcaBtn.addEventListener('click', runPcaSequence);
+
+    resetViewBtn.addEventListener('click', () => {
+      camera.position.set(320, 260, 420);
+      controls.target.set(0, 0, 0);
+      controls.update();
+    });
+
+    pointCountSlider.addEventListener('input', () => {
+      pointCountVal.textContent = pointCountSlider.value;
+    });
+
+    initScene();
+    newCloudBtn.click();
+  </script>
+</body>
+</html>
