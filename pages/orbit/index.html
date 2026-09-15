@@ -20,6 +20,8 @@
       flex-direction: column;
       gap: 18px;
       font-size: 19px;
+      overflow-x: hidden;
+      box-sizing: border-box;
     }
     .ctrl-buttons {
       display: flex;
@@ -38,41 +40,46 @@
     .stepper-slider {
       display: flex;
       align-items: center;
-      gap: 12px;
-      font-size: 19px;
+      flex-wrap: wrap;
+      gap: 8px 12px;
+      font-size: 17px;
       white-space: nowrap;
     }
     .stepper-slider span {
-      min-width: 150px;
-      font-size: 19px;
+      min-width: 0;
+      font-size: 17px;
       font-weight: 500;
     }
     .stepper-slider input[type="range"] {
-      width: 120px;
+      flex: 1 1 90px;
+      min-width: 70px;
+      max-width: 120px;
     }
     .stepper-slider input[type="number"] {
-      width: 64px;
-      font-size: 19px;
+      width: 56px;
+      font-size: 17px;
       padding: 2px 6px;
     }
     .planet-control-row {
       display: flex;
       align-items: center;
-      gap: 12px;
-      font-size: 18px;
+      flex-wrap: wrap;
+      gap: 6px 10px;
+      font-size: 16px;
+      white-space: nowrap;
       margin-top: 8px;
       margin-bottom: 0;
     }
     .planet-control-row label {
-      font-size: 18px;
+      font-size: 16px;
       margin-right: 2px;
       font-weight: 400;
     }
     .planet-control-row input[type=number] {
-      width: 68px;
-      font-size: 18px;
+      width: 60px;
+      font-size: 16px;
       padding: 2px 6px;
-      margin-right: 14px;
+      margin-right: 8px;
     }
     .planet-control-row input[type=checkbox] {
       width: 18px; height: 18px;
@@ -112,8 +119,8 @@
     </div>
     <div class="stepper-slider">
       <span>Animation Speed:</span>
-      <input type="range" id="timeControl" min="0.1" max="5" step="0.1" value="1">
-      <span id="timeValue">1.0</span>
+      <input type="range" id="timeControl" min="0" max="1000" step="10" value="300">
+      <span id="timeValue">300</span>
     </div>
     <div id="massInputs"></div>
   </div>
@@ -135,7 +142,7 @@
     let dragPlanet = null, dragMode = null;
 
     const dtBase = 0.01;
-    let animSpeed = 1;
+    let animSpeed = 300;
     const velScale = 0.2;
     const dragEffect = 0.01;
     const sizeScale = 5;
@@ -155,8 +162,8 @@
 
     gravSlider.addEventListener('input', () => { gravValue.textContent = gravSlider.value; draw(); });
     speedSlider.addEventListener('input', () => {
-      animSpeed = +speedSlider.value * 150;
-      speedValue.textContent = Math.round(animSpeed);
+      animSpeed = +speedSlider.value;
+      speedValue.textContent = animSpeed;
     });
     numPlanetsInput.addEventListener('input', initPlanets);
 
@@ -386,26 +393,64 @@
 
     stableBtn.addEventListener('click', () => {
       const n = 3;
-      const m = 100;
-      const r = sizeScale * Math.sqrt(m / Math.PI);
+      // Equal masses at the vertices of an equilateral triangle are an EXACT
+      // solution of the 3-body problem, but they are dynamically unstable
+      // (Routh's criterion: (m1+m2+m3)^2 > 27(m1 m2 + m2 m3 + m3 m1) is
+      // required for stability, and equal masses fail it). Any tiny nudge —
+      // a stray drag, a mass-field edit, even floating-point rounding —
+      // grows exponentially and the triangle flies apart within seconds.
+      // A dominant "primary" plus two much lighter companions (like the Sun
+      // and two Trojan asteroids) comfortably satisfies Routh's criterion
+      // and stays visibly stable indefinitely, so that's what we place here.
+      const masses = [1000, 10, 10];
+      const Mtot = masses[0] + masses[1] + masses[2];
+      // Scale the orbit off the canvas's vertical extent, well under half of
+      // it (0.22 < 0.5) so the whole configuration stays comfortably inside
+      // the visible area — a fixed safe scale factor rather than an exact
+      // fit calculation.
+      const Rgeom = canvas.height * 0.22;
+      const d = Rgeom * Math.sqrt(3); // equilateral triangle side length
       const centerX = canvas.width/2, centerY = canvas.height/2;
-      const R = Math.min(canvas.width, canvas.height) * 0.22;
-      planets = [];
+      const G = +gravSlider.value * 10;
+      const omega = Math.sqrt(G * Mtot / (d * d * d));
+
+      const raw = [];
       for (let i = 0; i < n; i++) {
         const theta = 2 * Math.PI * i / n - Math.PI/2;
-        const x = centerX + R * Math.cos(theta);
-        const y = centerY + R * Math.sin(theta);
-        const G = +gravSlider.value * 10;
-        const v = Math.sqrt(G * m / (R * 2 * Math.sin(Math.PI/3)));
-        const angle = theta + Math.PI/2;
-        const vx = v * Math.cos(angle);
-        const vy = v * Math.sin(angle);
-        planets.push({
-          m, r, x, y, vx, vy,
-          color: `hsl(${Math.random()*360},50%,70%)`,
-          fixed: false, dragDx: 0, dragDy: 0
+        raw.push({
+          m: masses[i],
+          x: centerX + Rgeom * Math.cos(theta),
+          y: centerY + Rgeom * Math.sin(theta)
         });
       }
+      // Because the masses are unequal, the barycenter (and hence the
+      // dominant body's own small orbit around it) sits off to one side of
+      // this geometric triangle, not at its center — so the primary would
+      // otherwise land away from the middle of the screen. Translate the
+      // whole rigid configuration (pure translation, doesn't affect the
+      // physics) so the primary body is exactly centered on the canvas at
+      // the moment the button is clicked.
+      const dx = centerX - raw[0].x;
+      const dy = centerY - raw[0].y;
+      raw.forEach(p => { p.x += dx; p.y += dy; });
+
+      // For unequal masses the triangle rotates rigidly about the center of
+      // MASS (barycenter), not the geometric centroid, so each body's own
+      // orbital radius (and thus speed) differs even though omega is shared.
+      const bx = raw.reduce((s,p) => s + p.m*p.x, 0) / Mtot;
+      const by = raw.reduce((s,p) => s + p.m*p.y, 0) / Mtot;
+
+      planets = raw.map(p => {
+        const rx = p.x - bx, ry = p.y - by;
+        const vx = -omega * ry;
+        const vy = omega * rx;
+        const r = sizeScale * Math.sqrt(p.m / Math.PI);
+        return {
+          m: p.m, r, x: p.x, y: p.y, vx, vy,
+          color: `hsl(${Math.random()*360},50%,70%)`,
+          fixed: false, dragDx: 0, dragDy: 0
+        };
+      });
       initMassInputsForStable();
       draw();
     });
